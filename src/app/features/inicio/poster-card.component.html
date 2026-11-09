@@ -1,0 +1,29 @@
+<article class="card" tabindex="0" (click)="opened.emit(entry())" (keydown.enter)="opened.emit(entry())">
+  <div class="card-poster" #poster (mouseenter)="onEnter(poster)" (mouseleave)="unhovered.emit()">
+    <div class="ph"><mh-art [seed]="seed()" /><span>{{ entry().title }}</span></div>
+
+    @if (entry().quality) {
+      <div class="badge badge-tl res">{{ entry().quality }}</div>
+    }
+    @if (entry().watched) {
+      <div class="badge badge-br"><mh-icon name="check" [size]="13" /></div>
+    }
+    @if (progress() > 0) {
+      <div class="progress-line poster-progress"><i [style.width.%]="progress()"></i></div>
+    }
+
+    <div class="card-actions">
+      <button class="icon-btn" type="button" title="Editar" aria-label="Editar" (click)="stop($event); edited.emit(entry())">
+        <mh-icon name="edit" [size]="18" />
+      </button>
+      <button class="icon-btn" type="button" title="Favorito" aria-label="Favorito" (click)="stop($event); favoriteToggled.emit(entry())">
+        <mh-icon name="heart" [size]="18" />
+      </button>
+    </div>
+  </div>
+
+  <div class="card-body">
+    <div class="card-title">{{ entry().title }}</div>
+    <div class="card-meta">{{ meta() }}</div>
+  </div>
+</article>

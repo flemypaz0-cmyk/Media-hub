@@ -1,0 +1,156 @@
+<audio #audioEl preload="none" (timeupdate)="onTimeUpdate()" (ended)="onEnded()" (error)="onError()"></audio>
+
+@if (visible()) {
+  <div class="mini-player" aria-label="Reproductor de música">
+    <div class="mp-track">
+      <span class="mp-art"><mh-art [seed]="current()?.cover ?? ''" /></span>
+      <span class="mp-meta">
+        <span class="mp-title">{{ current()?.title }}</span>
+        <span class="mp-artist">{{ current()?.artistName }} · {{ current()?.albumTitle }}</span>
+      </span>
+    </div>
+
+    <div class="mp-center">
+      <div class="mp-controls">
+        <button class="icon-btn sm" [class.active]="music.shuffle()" aria-label="Aleatorio inteligente" (click)="toggleShuffle()">
+          <mh-icon name="shuffle" [size]="18" />
+        </button>
+        <button class="icon-btn sm" aria-label="Anterior" (click)="previous()"><mh-icon name="prev" [size]="18" /></button>
+        <button class="icon-btn filled sm" [attr.aria-label]="music.playing() ? 'Pausar' : 'Reproducir'" (click)="toggle()">
+          <mh-icon [name]="music.playing() ? 'pause' : 'play'" [size]="20" />
+        </button>
+        <button class="icon-btn sm" aria-label="Siguiente" (click)="next()"><mh-icon name="next" [size]="18" /></button>
+        <button class="icon-btn sm" [class.active]="music.repeat() !== 'off'" aria-label="Repetir" (click)="cycleRepeat()">
+          <mh-icon name="repeat" [size]="18" />
+        </button>
+      </div>
+      <div class="mp-progress">
+        <span>{{ formatDuration(music.position()) }}</span>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          [value]="music.progressPercent()"
+          aria-label="Posición de reproducción"
+          (input)="seek($any($event.target).value)"
+        />
+        <span>{{ formatDuration(music.duration()) }}</span>
+      </div>
+    </div>
+
+    <div class="mp-right">
+      <button class="icon-btn sm" aria-label="Cola de reproducción" (click)="queueOpen.set(!queueOpen())">
+        <mh-icon name="queue" [size]="18" />
+      </button>
+      <button class="icon-btn sm" aria-label="Ecualizador" (click)="eqOpen.set(!eqOpen())">
+        <mh-icon name="eq" [size]="18" />
+      </button>
+      <button class="icon-btn sm" aria-label="Cerrar reproductor" (click)="close()">
+        <mh-icon name="close" [size]="18" />
+      </button>
+      <div class="mp-vol">
+        <mh-icon name="volume" [size]="18" />
+        <input
+          type="range"
+          min="0"
+          max="100"
+          [value]="music.volume()"
+          aria-label="Volumen"
+          (input)="setVolume($any($event.target).value)"
+        />
+      </div>
+    </div>
+  </div>
+
+  @if (queueOpen()) {
+    <div class="dialog-scrim" (click)="queueOpen.set(false)">
+      <div class="dialog" role="dialog" aria-modal="true" (click)="$event.stopPropagation()">
+        <div class="dlg-head">
+          <h2>Cola de reproducción</h2>
+          <button class="icon-btn" aria-label="Cerrar" (click)="queueOpen.set(false)"><mh-icon name="close" /></button>
+        </div>
+        <div class="dlg-body">
+          <div class="hint" style="margin-bottom: 10px">Arrastra para reordenar la cola de reproducción.</div>
+          <div class="track-list">
+            @for (track of music.queue(); track track.id; let i = $index) {
+              <div
+                class="track-row"
+                [class.playing]="track.id === current()?.id"
+                draggable="true"
+                (dragstart)="onDragStart(i)"
+                (dragover)="onDragOver($event, i)"
+                (dragend)="onDragEnd()"
+                (click)="playFromQueue(i)"
+              >
+                <div class="track-idx">{{ i + 1 }}</div>
+                <div>
+                  <div class="track-name">{{ track.title }}</div>
+                  <div class="track-artist">{{ track.artistName }}</div>
+                </div>
+                <div class="track-artist">{{ formatDuration(track.duration) }}</div>
+                <button class="icon-btn sm" aria-label="Quitar de la cola" (click)="removeFromQueue(i); $event.stopPropagation()">
+                  <mh-icon name="close" [size]="18" />
+                </button>
+              </div>
+            }
+          </div>
+        </div>
+        <div class="dlg-foot">
+          <button class="btn btn-text" type="button" (click)="clearQueue()">Limpiar cola</button>
+          <button class="btn btn-filled" type="button" (click)="queueOpen.set(false)">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  }
+
+  @if (eqOpen()) {
+    <div class="dialog-scrim" (click)="eqOpen.set(false)">
+      <div class="dialog" role="dialog" aria-modal="true" (click)="$event.stopPropagation()">
+        <div class="dlg-head">
+          <h2>Ecualizador gráfico</h2>
+          <button class="icon-btn" aria-label="Cerrar" (click)="eqOpen.set(false)"><mh-icon name="close" /></button>
+        </div>
+        <div class="dlg-body">
+          <div class="chips" style="margin-bottom: 14px">
+            @for (preset of equalizerPresets; track preset) {
+              <button
+                class="chip"
+                [class.selected]="store.state().equalizer.preset === preset"
+                type="button"
+                (click)="applyPreset(preset)"
+              >
+                {{ preset }}
+              </button>
+            }
+          </div>
+          <div style="display: flex; gap: 6px; align-items: flex-end; height: 130px">
+            @for (gain of store.state().equalizer.gains; track $index; let i = $index) {
+              <div style="flex: 1; text-align: center">
+                <input
+                  type="range"
+                  min="-12"
+                  max="12"
+                  [value]="gain"
+                  [attr.aria-label]="'Banda ' + (i * 2 + 3) + ' kHz'"
+                  style="width: 100%; height: 100px; writing-mode: vertical-lr; direction: rtl"
+                  (input)="setGain(i, $any($event.target).value)"
+                />
+                <div class="hint" style="font-size: 0.6rem">{{ i * 2 + 3 }}K</div>
+              </div>
+            }
+          </div>
+          <div class="switch-row" (click)="toggleVisualizer()">
+            <span class="sw-text">
+              <span class="sw-title">Visualizador</span>
+              <span class="sw-sub">Muestra el espectro durante la reproducción</span>
+            </span>
+            <span class="switch" [class.on]="music.visualizer()"></span>
+          </div>
+        </div>
+        <div class="dlg-foot">
+          <button class="btn btn-filled" type="button" (click)="eqOpen.set(false)">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  }
+}

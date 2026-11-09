@@ -953,3 +953,27 @@ input[type=range]::-moz-range-thumb {
   .explorer { grid-template-columns: 1fr; }
   .grid-2, .grid-3 { grid-template-columns: 1fr; }
 }
+
+/* ==================== ADAPTACIONES ANGULAR ==================== */
+
+/* Los diálogos se montan en una capa propia sobre el body. */
+.dialog-layer { position: relative; z-index: 200; }
+
+/* El arte generado es un elemento en línea: debe quedar detrás del velo y del título. */
+.ph > mh-art,
+.card-poster .ph > mh-art,
+.detail-poster .ph > mh-art { position: absolute; inset: 0; z-index: 0; }
+.card-poster .ph::before,
+.detail-poster .ph::before { z-index: 1; }
+.card-poster .ph > span,
+.detail-poster .ph > span { position: relative; z-index: 2; }
+
+.mp-art > mh-art,
+.cw-thumb > mh-art,
+.ex-thumb > mh-art { position: absolute; inset: 0; border-radius: inherit; }
+
+/* Botones con icono: el icono hereda el color del texto. */
+.btn mh-icon, .icon-btn mh-icon, .chip mh-icon, .nav-item mh-icon { fill: currentColor; }
+
+/* El póster usa <mh-art> como fondo: se mantiene el aspecto 2/3 por defecto. */
+.card-poster .ph { position: relative; }

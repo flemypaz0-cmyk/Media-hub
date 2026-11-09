@@ -1,0 +1,111 @@
+<a class="skip-link" href="#main">Saltar al contenido principal</a>
+
+<div class="nav-scrim" [hidden]="!(narrow() && menuOpen())" (click)="closeMenu()"></div>
+
+<div class="app-shell">
+  <!-- ============ BARRA LATERAL ============ -->
+  <aside class="nav-rail" aria-label="Navegación principal">
+    <div class="nav-brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="22" height="22">
+          <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Zm5 3.5v7l6-3.5-6-3.5Z" />
+        </svg>
+      </span>
+      <span class="brand-text">MediaHub</span>
+    </div>
+
+    <nav class="nav-items">
+      @for (group of groups; track group.title) {
+        @if (group.title) {
+          <div class="nav-divider"><span>{{ group.title }}</span></div>
+        }
+        @for (item of group.items; track item.path) {
+          <a
+            class="nav-item"
+            [routerLink]="item.path"
+            routerLinkActive="active"
+            [routerLinkActiveOptions]="{ exact: true }"
+            [title]="item.label"
+            (click)="closeMenu()"
+          >
+            <span class="ni-ic"><mh-icon [name]="item.icon" [size]="22" /></span>
+            <span class="ni-tx">{{ item.label }}</span>
+            @if (item.path === '/notificaciones' && unread() > 0) {
+              <span class="nav-badge">{{ unread() }}</span>
+            }
+          </a>
+        }
+      }
+    </nav>
+
+    <div class="nav-foot">
+      <div class="nav-storage">
+        <div class="storage-row">
+          <span>Almacenamiento</span>
+          <span>{{ storagePercent() }}%</span>
+        </div>
+        <div class="meter"><div class="meter-fill" [style.width.%]="storagePercent()"></div></div>
+        <div class="hint">{{ storageUsed() }} de {{ storageTotal() }}</div>
+      </div>
+      <button class="profile-chip" aria-haspopup="menu" (click)="openProfileMenu()">
+        <span class="avatar" [style.background]="profile()?.color">{{ profile()?.avatar }}</span>
+        <span class="pc-meta">
+          <span class="pc-name">{{ profile()?.name }}</span>
+          <span class="pc-role">{{ profile()?.role === 'admin' ? 'Administrador' : profile()?.role === 'child' ? 'Infantil' : 'Usuario' }}</span>
+        </span>
+        <span class="pc-more" aria-hidden="true">⋮</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ============ CONTENIDO ============ -->
+  <div class="main-col">
+    <header class="top-bar">
+      <button
+        class="icon-btn"
+        aria-label="Mostrar u ocultar el menú lateral"
+        [attr.aria-expanded]="narrow() ? menuOpen() : !menuCollapsed()"
+        aria-controls="navRail"
+        (click)="toggleMenu()"
+      >
+        <mh-icon name="menu" />
+      </button>
+
+      <div class="search-box" role="search">
+        <span class="sb-ic" aria-hidden="true"><mh-icon name="search" [size]="20" /></span>
+        <input
+          id="globalSearch"
+          type="search"
+          placeholder="Buscar títulos, géneros, artistas..."
+          aria-label="Búsqueda global"
+          autocomplete="off"
+          [value]="search()"
+          (input)="onSearch($any($event.target).value)"
+        />
+        <kbd class="sb-kbd">/</kbd>
+      </div>
+
+      <div class="top-actions">
+        <button class="icon-btn" aria-label="Notificaciones" (click)="openNotifications()">
+          <mh-icon name="bell" />
+          @if (unread() > 0) {
+            <span class="dot-badge"></span>
+          }
+        </button>
+        <button class="icon-btn" aria-label="Cambiar tema" [title]="'Tema: ' + themeLabel()" (click)="cycleTheme()">
+          <mh-icon name="theme" />
+        </button>
+        <button class="icon-btn" aria-label="Idioma de la interfaz" title="Idioma" (click)="toggleLang()">ES</button>
+        <button class="btn btn-filled" (click)="openAddMenu()"><mh-icon name="plus" [size]="18" />Agregar</button>
+      </div>
+    </header>
+
+    <main id="main" class="content" tabindex="-1">
+      <router-outlet />
+    </main>
+  </div>
+</div>
+
+<mh-video-player />
+<mh-music-player />
+<mh-toast-host />

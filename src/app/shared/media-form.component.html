@@ -1,0 +1,211 @@
+<div class="dialog-scrim" (click)="close()">
+  <div class="dialog wide" role="dialog" aria-modal="true" (click)="$event.stopPropagation()">
+    <div class="dlg-head">
+      <h2>
+        @switch (data().kind) {
+          @case ('video') { {{ isEdit() ? 'Editar vídeo' : 'Agregar vídeo' }} }
+          @case ('episode') { {{ isEdit() ? 'Editar episodio' : 'Agregar episodio' }} }
+          @case ('series') { {{ isEdit() ? 'Editar serie' : 'Nueva serie' }} }
+          @case ('track') { Pista de música }
+        }
+      </h2>
+      <button class="icon-btn" aria-label="Cerrar" (click)="close()"><mh-icon name="close" /></button>
+    </div>
+
+    <div class="dlg-body">
+      <div class="tabs">
+        <button class="tab" [class.active]="tab() === 'basico'" type="button" (click)="tab.set('basico')">Básico</button>
+        <button class="tab" [class.active]="tab() === 'pistas'" type="button" (click)="tab.set('pistas')">Subtítulos y audio</button>
+        <button class="tab" [class.active]="tab() === 'taxonomia'" type="button" (click)="tab.set('taxonomia')">Categoría y etiquetas</button>
+        <button class="tab" [class.active]="tab() === 'imagen'" type="button" (click)="tab.set('imagen')">Miniatura y carátula</button>
+      </div>
+
+      <!-- ================= BÁSICO ================= -->
+      @if (tab() === 'basico') {
+        <div class="grid-2">
+          <div class="field">
+            <label class="field-label" for="mf-title">Título</label>
+            <input
+              id="mf-title"
+              class="input"
+              type="text"
+              list="mf-title-options"
+              autocomplete="off"
+              [value]="title()"
+              (input)="title.set($any($event.target).value)"
+              placeholder="Título del contenido"
+            />
+            <datalist id="mf-title-options">
+              @for (suggestion of titleSuggestions(); track suggestion) {
+                <option [value]="suggestion"></option>
+              }
+            </datalist>
+          </div>
+
+          @if (data().kind === 'episode') {
+            <div class="field">
+              <label class="field-label" for="mf-series">Serie</label>
+              <select id="mf-series" class="select" [value]="seriesId() ?? ''" (change)="seriesId.set($any($event.target).value || null)">
+                <option value="">Selecciona una serie…</option>
+                @for (s of store.series(); track s.id) {
+                  <option [value]="s.id">{{ s.title }}</option>
+                }
+              </select>
+            </div>
+          }
+
+          <div class="field">
+            <label class="field-label" for="mf-path">Archivo original</label>
+            <div style="display: flex; gap: 8px; align-items: center">
+              <input id="mf-path" class="input" type="text" readonly [value]="path()" placeholder="Ruta del archivo en tu disco" />
+              <button class="btn btn-outlined" type="button" (click)="pickVideoFile()"><mh-icon name="folder" [size]="18" />Explorar</button>
+            </div>
+            <span class="hint">La app registra la ruta; nunca copia ni mueve el archivo.</span>
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="mf-duration">Duración (segundos)</label>
+            <input id="mf-duration" class="input" type="number" min="0" [value]="duration()" (input)="duration.set($any($event.target).value)" />
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="mf-year">Año</label>
+            <input id="mf-year" class="input" type="number" [value]="year()" (input)="year.set(+$any($event.target).value)" />
+          </div>
+
+          @if (data().kind === 'track') {
+            <div class="field">
+              <label class="field-label" for="mf-artist">Artista</label>
+              <input id="mf-artist" class="input" type="text" list="mf-artist-options" [value]="artist() ?? ''" (input)="artist.set($any($event.target).value)" />
+              <datalist id="mf-artist-options">
+                @for (a of artistValues(); track a) {
+                  <option [value]="a"></option>
+                }
+              </datalist>
+            </div>
+            <div class="field">
+              <label class="field-label" for="mf-album">Álbum</label>
+              <input id="mf-album" class="input" type="text" list="mf-album-options" [value]="album() ?? ''" (input)="album.set($any($event.target).value)" />
+              <datalist id="mf-album-options">
+                @for (a of albumValues(); track a) {
+                  <option [value]="a"></option>
+                }
+              </datalist>
+            </div>
+          }
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="mf-synopsis">Sinopsis</label>
+          <textarea id="mf-synopsis" class="textarea" rows="3" [value]="synopsis()" (input)="synopsis.set($any($event.target).value)"></textarea>
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="mf-notes">Notas</label>
+          <textarea id="mf-notes" class="textarea" rows="2" [value]="notes()" (input)="notes.set($any($event.target).value)"></textarea>
+        </div>
+      }
+
+      <!-- ================= PISTAS ================= -->
+      @if (tab() === 'pistas') {
+        <div class="field">
+          <span class="field-label">Pistas de audio</span>
+          <div class="chips">
+            <span class="chip">Español · AAC 5.1 <mh-icon name="close" [size]="16" /></span>
+            <span class="chip">Original · AC3 2.0 <mh-icon name="close" [size]="16" /></span>
+          </div>
+        </div>
+        <div class="field">
+          <span class="field-label">Subtítulos</span>
+          <div class="chips">
+            <span class="chip">Español (embebido) <mh-icon name="close" [size]="16" /></span>
+            <span class="chip">Inglés (externo) <mh-icon name="close" [size]="16" /></span>
+          </div>
+          <span class="hint">Las pistas se registran con su ruta original dentro del contenedor.</span>
+        </div>
+        <div class="field">
+          <span class="field-label">Capítulos</span>
+          <div class="chips">
+            <span class="chip">Intro <mh-icon name="close" [size]="16" /></span>
+            <span class="chip">Desarrollo <mh-icon name="close" [size]="16" /></span>
+            <span class="chip">Créditos <mh-icon name="close" [size]="16" /></span>
+          </div>
+        </div>
+      }
+
+      <!-- ================= TAXONOMÍA ================= -->
+      @if (tab() === 'taxonomia') {
+        <div class="grid-2">
+          <mh-combo-box
+            label="Categoría"
+            [values]="categoryValues()"
+            [value]="category()"
+            (valueChange)="category.set($event as string | null)"
+          />
+          <mh-combo-box
+            label="Género"
+            [values]="genreValues()"
+            [value]="genre()"
+            (valueChange)="genre.set($event as string | null)"
+          />
+        </div>
+        <div class="grid-2">
+          <mh-combo-box
+            label="Etiquetas"
+            [values]="tagValues()"
+            [value]="tags()"
+            [multiple]="true"
+            placeholder="Buscar o crear etiqueta..."
+            (valueChange)="tags.set(($event as string[] | null) ?? [])"
+          />
+          <mh-combo-box
+            label="Colección"
+            [values]="collectionValues()"
+            [value]="collection()"
+            (valueChange)="collection.set($event as string | null)"
+          />
+        </div>
+        <div class="grid-2">
+          <mh-combo-box
+            label="Calidad"
+            [values]="qualityValues()"
+            [value]="quality()"
+            (valueChange)="quality.set($event as string | null)"
+          />
+          <mh-combo-box
+            label="Idioma"
+            [values]="languageValues()"
+            [value]="language()"
+            (valueChange)="language.set($event as string | null)"
+          />
+        </div>
+      }
+
+      <!-- ================= IMAGEN ================= -->
+      @if (tab() === 'imagen') {
+        <div class="grid-2">
+          <div class="field">
+            <span class="field-label">Miniatura</span>
+            <div style="display: flex; gap: 8px; align-items: center">
+              <input class="input" type="text" readonly [value]="thumbnail()" placeholder="Sin miniatura" />
+              <button class="btn btn-outlined" type="button" (click)="pickImage('miniatura')">Explorar</button>
+            </div>
+          </div>
+          <div class="field">
+            <span class="field-label">Carátula</span>
+            <div style="display: flex; gap: 8px; align-items: center">
+              <input class="input" type="text" readonly [value]="poster()" placeholder="Sin carátula" />
+              <button class="btn btn-outlined" type="button" (click)="pickImage('poster')">Explorar</button>
+            </div>
+          </div>
+        </div>
+        <span class="hint">Si no eliges una imagen se genera una portada determinista a partir del título.</span>
+      }
+    </div>
+
+    <div class="dlg-foot">
+      <button class="btn btn-text" type="button" (click)="close()">Cancelar</button>
+      <button class="btn btn-filled" type="button" (click)="save()">Guardar</button>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,291 @@
+@if (player.isOpen()) {
+  <div class="player-overlay" [class.ui-hidden]="uiHidden()" role="dialog" aria-modal="true" aria-label="Reproductor de vídeo">
+    <div class="player-stage" #playerStage (mousemove)="onStageMove()" (mouseleave)="onStageLeave()">
+      <video
+        #videoEl
+        playsinline
+        preload="metadata"
+        [style.filter]="filter()"
+        (timeupdate)="onTimeUpdate()"
+        (loadedmetadata)="onLoadedMetadata()"
+        (play)="player.playing.set(true)"
+        (pause)="player.playing.set(false)"
+        (ended)="onEnded()"
+      ></video>
+
+      <!-- previsualización al arrastrar la línea de tiempo -->
+      @if (scrub(); as preview) {
+        <div class="scrub-preview" [style.left.px]="preview.x">
+          <div class="sp-thumb"><mh-art [seed]="preview.seed" kind="wide" /></div>
+          <div class="sp-time">{{ formatDuration(preview.time) }}</div>
+        </div>
+      }
+
+      @if (feedbackIcon(); as icon) {
+        <div class="player-feedback"><mh-icon [name]="icon" [size]="40" /></div>
+      }
+
+      @if (skipIntroVisible()) {
+        <button class="skip-btn" (click)="skipIntro()">Saltar intro <span class="kbd">Intro</span></button>
+      }
+      @if (skipCreditsVisible()) {
+        <button class="skip-btn alt" (click)="skipCredits()">Saltar créditos <span class="kbd">Créditos</span></button>
+      }
+
+      <!-- siguiente episodio con cuenta atrás cancelable -->
+      @if (nextCount() !== null) {
+        <div class="next-ep">
+          <div class="ne-info">
+            <span class="ne-label">Siguiente episodio en</span>
+            <span class="ne-count">{{ nextCount() }}</span>
+            <span class="ne-title">{{ nextTitle() }}</span>
+          </div>
+          <div class="ne-actions">
+            <button class="btn btn-text" (click)="cancelNext()">Cancelar</button>
+            <button class="btn btn-filled" (click)="playNextNow()">Reproducir ahora</button>
+          </div>
+        </div>
+      }
+
+      <!-- barra superior -->
+      <div class="player-top">
+        <button class="icon-btn" aria-label="Cerrar reproductor" (click)="close()"><mh-icon name="close" /></button>
+        <div class="pt-title">
+          <span class="pt-main">{{ title() }}</span>
+          <span class="pt-sub">{{ subtitle() }}</span>
+        </div>
+        <div class="pt-actions">
+          <button class="icon-btn" aria-label="Emitir a dispositivo de red" (click)="openPanel('cast')"><mh-icon name="cast" /></button>
+          <button class="icon-btn" aria-label="Picture in picture" (click)="togglePip()"><mh-icon name="pip" /></button>
+          <button class="icon-btn" aria-label="Pantalla completa" (click)="toggleFullscreen()"><mh-icon name="fullscreen" /></button>
+        </div>
+      </div>
+
+      <!-- controles -->
+      <div class="player-controls">
+        <div class="pc-progress">
+          <div
+            class="pc-track"
+            (click)="seekFromEvent($event)"
+            (mousemove)="onTrackMove($event)"
+            (mouseleave)="scrub.set(null)"
+          >
+            <div class="pc-buff"></div>
+            @if (abStyle(); as style) {
+              <div class="pc-ab" [style.left]="style.left" [style.width]="style.width">
+                <span class="ab-a">A</span>
+                <span class="ab-b">B</span>
+              </div>
+            }
+            <div class="pc-fill" [style.width.%]="player.progressPercent()"></div>
+            <div class="pc-handle" [style.left.%]="player.progressPercent()"></div>
+          </div>
+          <div class="pc-times">
+            <span>{{ formatDuration(player.position()) }}</span>
+            <span>{{ formatDuration(player.duration()) }}</span>
+          </div>
+        </div>
+
+        <div class="pc-row">
+          <div class="pc-left">
+            <button class="icon-btn" [attr.aria-label]="player.playing() ? 'Pausar' : 'Reproducir'" (click)="togglePlay()">
+              <mh-icon [name]="player.playing() ? 'pause' : 'play'" />
+            </button>
+            <button class="icon-btn" aria-label="Retroceder 10 segundos" (click)="skip(-10)"><mh-icon name="replay10" /></button>
+            <button class="icon-btn" aria-label="Avanzar 10 segundos" (click)="skip(10)"><mh-icon name="forward10" /></button>
+            <button class="icon-btn" aria-label="Repetir desde el inicio" (click)="restart()"><mh-icon name="repeat" /></button>
+            <button class="icon-btn" aria-label="Repetición A-B" (click)="toggleAb()"><mh-icon name="ab" /></button>
+            <div class="pc-vol">
+              <mh-icon name="volume" [size]="20" />
+              <input
+                type="range"
+                min="0"
+                max="100"
+                [value]="player.volume()"
+                aria-label="Volumen"
+                (input)="onVolume($any($event.target).value)"
+              />
+            </div>
+          </div>
+
+          <div class="pc-center">
+            <div class="speed-control" title="Velocidad de reproducción">
+              <span class="sc-label">0.5x</span>
+              <input
+                type="range"
+                min="50"
+                max="300"
+                step="5"
+                [value]="player.rate() * 100"
+                aria-label="Velocidad de reproducción"
+                (input)="onSpeed($any($event.target).value)"
+              />
+              <span class="sc-label">2x</span>
+              <output class="sc-value">{{ formatRate(player.rate()) }}</output>
+            </div>
+          </div>
+
+          <div class="pc-right">
+            <button class="icon-btn" aria-label="Pista de audio" (click)="openPanel('audio')"><mh-icon name="audio" /></button>
+            <button class="icon-btn" aria-label="Pista de subtítulos" (click)="openPanel('subs')"><mh-icon name="captions" /></button>
+            <button class="icon-btn" aria-label="Calidad" (click)="openPanel('quality')"><mh-icon name="quality" /></button>
+            <button class="icon-btn" aria-label="Capítulos" (click)="openPanel('chapters')"><mh-icon name="chapters" /></button>
+            <button class="icon-btn" aria-label="Ajustes de imagen" (click)="openPanel('image')"><mh-icon name="image" /></button>
+            <button class="icon-btn" aria-label="Ajustes de subtítulos" (click)="openPanel('substyle')"><mh-icon name="style" /></button>
+            <button class="icon-btn" aria-label="Temporizador de suspensión" (click)="openPanel('sleep')"><mh-icon name="sleep" /></button>
+            <button class="icon-btn" aria-label="Atajos de teclado" (click)="openPanel('keys')"><mh-icon name="keyboard" /></button>
+          </div>
+        </div>
+      </div>
+
+      <!-- paneles de ajustes -->
+      @if (panel() !== 'none') {
+        <div class="player-panel">
+          <div class="pp-head">
+            <span>{{ panelTitle() }}</span>
+            <button class="icon-btn sm" aria-label="Cerrar panel" (click)="panel.set('none')"><mh-icon name="close" [size]="18" /></button>
+          </div>
+          <div class="pp-body">
+            @switch (panel()) {
+              @case ('audio') {
+                <button class="pp-opt" [class.sel]="selectedAudioTrack() === null" (click)="selectAudioTrack(null)">
+                  <span class="pp-opt-tx"><b>Ninguna</b><span>Sin pista adicional</span></span>
+                </button>
+                @for (track of item()?.audioTracks ?? []; track track.id) {
+                  <button class="pp-opt" [class.sel]="selectedAudioTrack() === track.id" (click)="selectAudioTrack(track.id)">
+                    <span class="pp-opt-tx"><b>{{ track.language }} · {{ track.codec }}</b><span>{{ track.channels }} canales</span></span>
+                  </button>
+                }
+              }
+              @case ('subs') {
+                <button class="pp-opt" [class.sel]="selectedSubtitleTrack() === null" (click)="selectSubtitleTrack(null, '')">
+                  <span class="pp-opt-tx"><b>Ninguno</b><span>Sin subtítulos</span></span>
+                </button>
+                @for (track of item()?.subtitleTracks ?? []; track track.id) {
+                  <button class="pp-opt" [class.sel]="selectedSubtitleTrack() === track.id" (click)="selectSubtitleTrack(track.id, track.language)">
+                    <span class="pp-opt-tx">
+                      <b>{{ track.language }}</b>
+                      <span>{{ track.format === 'embedded' ? 'embebido' : 'externo' }}</span>
+                    </span>
+                  </button>
+                }
+              }
+              @case ('quality') {
+                @for (option of ['Automática', '2160p', '1440p', '1080p', '720p', '480p']; track option) {
+                  <button class="pp-opt" [class.sel]="selectedQuality() === option" (click)="selectQuality(option)">
+                    <span class="pp-opt-tx"><b>{{ option }}</b><span>Transmisión local</span></span>
+                  </button>
+                }
+              }
+              @case ('chapters') {
+                @if (!(item()?.chapters ?? []).length) {
+                  <div class="hint">Este contenido no tiene capítulos definidos.</div>
+                }
+                @for (chapter of item()?.chapters ?? []; track chapter.id) {
+                  <button class="pp-opt" (click)="jumpToChapter(chapter.start)">
+                    <span class="pp-opt-tx">
+                      <b>{{ chapter.title }}</b>
+                      <span>{{ formatDuration(chapter.start) }} → {{ formatDuration(chapter.end) }}</span>
+                    </span>
+                  </button>
+                }
+              }
+              @case ('image') {
+                @for (field of adjustmentFields; track field.key) {
+                  <div class="pp-row">
+                    <label [for]="'adj-' + field.key">{{ field.label }}</label>
+                    <input
+                      [id]="'adj-' + field.key"
+                      type="range"
+                      [min]="field.min"
+                      [max]="field.max"
+                      [value]="store.state().imageAdjustments[field.key]"
+                      (input)="updateAdjustment(field.key, $any($event.target).value)"
+                    />
+                    <span class="pp-val">{{ store.state().imageAdjustments[field.key] }}</span>
+                  </div>
+                }
+                <div class="switch-row" (click)="toggleToneMapping()">
+                  <span class="sw-text">
+                    <span class="sw-title">Tone-mapping HDR → SDR</span>
+                    <span class="sw-sub">Para pantallas que no soportan HDR</span>
+                  </span>
+                  <span class="switch" [class.on]="store.state().imageAdjustments.toneMapping"></span>
+                </div>
+                <button class="btn btn-outlined" (click)="resetAdjustments()">Restablecer a valores por defecto</button>
+              }
+              @case ('substyle') {
+                <div class="pp-row">
+                  <label for="sub-size">Tamaño</label>
+                  <input id="sub-size" type="range" min="60" max="200" [value]="store.state().subtitleStyle.size" (input)="updateSubtitleStyle('size', +$any($event.target).value)" />
+                  <span class="pp-val">{{ store.state().subtitleStyle.size }}</span>
+                </div>
+                <div class="pp-row">
+                  <label for="sub-opacity">Opacidad</label>
+                  <input id="sub-opacity" type="range" min="0" max="100" [value]="store.state().subtitleStyle.opacity" (input)="updateSubtitleStyle('opacity', +$any($event.target).value)" />
+                  <span class="pp-val">{{ store.state().subtitleStyle.opacity }}</span>
+                </div>
+                <div class="pp-row">
+                  <label for="sub-offset">Sincronización (ms)</label>
+                  <input id="sub-offset" type="range" min="-5000" max="5000" [value]="store.state().subtitleStyle.offset" (input)="updateSubtitleStyle('offset', +$any($event.target).value)" />
+                  <span class="pp-val">{{ store.state().subtitleStyle.offset }}</span>
+                </div>
+                <div class="field">
+                  <span class="field-label">Fuente</span>
+                  <select class="select" [value]="store.state().subtitleStyle.font" (change)="updateSubtitleStyle('font', $any($event.target).value)">
+                    @for (font of ['Roboto', 'Roboto Slab', 'Georgia', 'Verdana', 'Monospace']; track font) {
+                      <option [value]="font">{{ font }}</option>
+                    }
+                  </select>
+                </div>
+                <div class="pp-row">
+                  <label for="sub-color">Color</label>
+                  <input id="sub-color" type="color" [value]="store.state().subtitleStyle.color" (input)="updateSubtitleStyle('color', $any($event.target).value)" />
+                  <label for="sub-bg">Fondo</label>
+                  <input id="sub-bg" type="color" [value]="store.state().subtitleStyle.bg" (input)="updateSubtitleStyle('bg', $any($event.target).value)" />
+                </div>
+                <div class="field">
+                  <span class="field-label">Posición</span>
+                  <select class="select" [value]="store.state().subtitleStyle.position" (change)="updateSubtitleStyle('position', $any($event.target).value)">
+                    <option value="bottom">Abajo</option>
+                    <option value="top">Arriba</option>
+                  </select>
+                </div>
+              }
+              @case ('sleep') {
+                @for (minutes of [5, 10, 15, 30, 45, 60, 90]; track minutes) {
+                  <button class="pp-opt" [class.sel]="store.state().sleepTimer === minutes" (click)="setSleepTimer(minutes)">
+                    <span class="pp-opt-tx"><b>{{ minutes }} minutos</b><span>El reproductor se pausa solo</span></span>
+                  </button>
+                }
+                @if (store.state().sleepTimer) {
+                  <button class="btn btn-text" (click)="setSleepTimer(0)">Cancelar temporizador</button>
+                }
+              }
+              @case ('keys') {
+                <div class="pp-list">
+                  @for (key of shortcuts; track key[0]) {
+                    <div class="pp-opt">
+                      <span class="pp-opt-tx"><b>{{ key[0] }}</b><span>{{ key[1] }}</span></span>
+                    </div>
+                  }
+                </div>
+              }
+              @case ('cast') {
+                @for (device of devices; track device) {
+                  <button class="pp-opt" (click)="castTo(device)">
+                    <span class="pp-opt-tx"><b>{{ device }}</b><span>Emitir a dispositivo de red</span></span>
+                  </button>
+                }
+              }
+            }
+          </div>
+        </div>
+      }
+
+      @if (subtitleSample(); as sample) {
+        <div class="sub-overlay" [style]="subtitleStyle()">{{ sample }}</div>
+      }
+    </div>
+  </div>
+}
