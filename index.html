@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="auto">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>MediaHub — Biblioteca multimedia local</title>
+<meta name="description" content="MediaHub: repositorio y reproductor local de video y musica con exploracion de biblioteca, series, galeria y taxonomia." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Slab:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css?v=27" />
+</head>
+<body>
+<a class="skip-link" href="#main">Saltar al contenido principal</a>
+
+<div class="nav-scrim" id="navScrim" hidden></div>
+
+<div class="app-shell">
+  <!-- ============ SIDEBAR / NAV ============ -->
+  <aside class="nav-rail" id="navRail" aria-label="Navegacion principal">
+    <div class="nav-brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="22" height="22"><path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6Zm5 3.5v7l6-3.5-6-3.5Z"/></svg>
+      </span>
+      <span class="brand-text">MediaHub</span>
+    </div>
+
+    <nav class="nav-items" id="navItems">
+      <a class="nav-item" href="#/inicio" data-nav="inicio" title="Inicio"><span class="ni-ic" data-icon="home"></span><span class="ni-tx">Inicio</span></a>
+      <a class="nav-item" href="#/series" data-nav="series" title="Series"><span class="ni-ic" data-icon="tv"></span><span class="ni-tx">Series</span></a>
+      <a class="nav-item" href="#/videos" data-nav="videos" title="Videos"><span class="ni-ic" data-icon="film"></span><span class="ni-tx">Videos</span></a>
+      <a class="nav-item" href="#/musica" data-nav="musica" title="Música"><span class="ni-ic" data-icon="music"></span><span class="ni-tx">Musica</span></a>
+      <a class="nav-item" href="#/galeria" data-nav="galeria" title="Galería"><span class="ni-ic" data-icon="folder"></span><span class="ni-tx">Galeria</span></a>
+      <div class="nav-divider"><span>Explorar</span></div>
+      <a class="nav-item" href="#/buscar" data-nav="buscar" title="Buscar"><span class="ni-ic" data-icon="search"></span><span class="ni-tx">Buscar</span></a>
+      <a class="nav-item" href="#/taxonomia" data-nav="taxonomia" title="Taxonomía"><span class="ni-ic" data-icon="tag"></span><span class="ni-tx">Taxonomia</span></a>
+      <a class="nav-item" href="#/estadisticas" data-nav="estadisticas" title="Estadísticas"><span class="ni-ic" data-icon="chart"></span><span class="ni-tx">Estadisticas</span></a>
+      <div class="nav-divider"><span>Sistema</span></div>
+      <a class="nav-item" href="#/biblioteca" data-nav="biblioteca" title="Biblioteca"><span class="ni-ic" data-icon="server"></span><span class="ni-tx">Biblioteca</span></a>
+      <a class="nav-item" href="#/usuarios" data-nav="usuarios" title="Usuarios"><span class="ni-ic" data-icon="users"></span><span class="ni-tx">Usuarios</span></a>
+      <a class="nav-item" href="#/notificaciones" data-nav="notificaciones" title="Notificaciones"><span class="ni-ic" data-icon="bell"></span><span class="ni-tx">Notificaciones</span><span class="nav-badge" id="notifBadge" hidden>0</span></a>
+      <a class="nav-item" href="#/admin" data-nav="admin" title="Administración"><span class="ni-ic" data-icon="settings"></span><span class="ni-tx">Administracion</span></a>
+    </nav>
+
+    <div class="nav-foot">
+      <div class="nav-storage" id="navStorage">
+        <div class="storage-row"><span>Almacenamiento</span><span id="storagePct">—</span></div>
+        <div class="meter"><div class="meter-fill" id="storageBar" style="width:0%"></div></div>
+      </div>
+      <button class="profile-chip" id="profileChip" aria-haspopup="menu" aria-expanded="false">
+        <span class="avatar" id="profileAvatar">M</span>
+        <span class="pc-meta">
+          <span class="pc-name" id="profileName">Invitado</span>
+          <span class="pc-role" id="profileRole">Perfil</span>
+        </span>
+        <span class="pc-more" aria-hidden="true">⋮</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ============ MAIN ============ -->
+  <div class="main-col">
+    <header class="top-bar">
+      <button class="icon-btn" id="menuToggle" aria-label="Mostrar u ocultar el menu lateral" aria-expanded="false" aria-controls="navRail">
+        <span data-icon="menu"></span>
+      </button>
+
+      <div class="search-box" role="search">
+        <span class="sb-ic" data-icon="search" aria-hidden="true"></span>
+        <input id="globalSearch" type="search" placeholder="Buscar titulos, generos, artistas..." aria-label="Busqueda global" autocomplete="off" />
+        <kbd class="sb-kbd">/</kbd>
+      </div>
+
+      <div class="top-actions">
+        <button class="icon-btn" id="notifBtn" aria-label="Notificaciones">
+          <span data-icon="bell"></span><span class="dot-badge" id="notifDot" hidden></span>
+        </button>
+        <button class="icon-btn" id="themeBtn" aria-label="Cambiar tema" title="Tema claro / oscuro / automatico">
+          <span data-icon="theme"></span>
+        </button>
+        <button class="icon-btn" id="langBtn" aria-label="Idioma de la interfaz" title="Idioma">ES</button>
+        <button class="btn btn-filled" id="addContentBtn"><span data-icon="plus"></span>Agregar</button>
+      </div>
+    </header>
+
+    <main id="main" class="content" tabindex="-1"></main>
+  </div>
+</div>
+
+<!-- ============ MINIPLAYER (MUSICA) ============ -->
+<audio id="audioEl" preload="none" crossorigin="anonymous"></audio>
+<div class="mini-player" id="miniPlayer" hidden aria-label="Reproductor de musica">
+  <div class="mp-track">
+    <span class="mp-art" id="mpArt"></span>
+    <span class="mp-meta">
+      <span class="mp-title" id="mpTitle">—</span>
+      <span class="mp-artist" id="mpArtist">—</span>
+    </span>
+  </div>
+  <div class="mp-center">
+    <div class="mp-controls">
+      <button class="icon-btn sm" id="mpShuffle" aria-label="Aleatorio inteligente"><span data-icon="shuffle"></span></button>
+      <button class="icon-btn sm" id="mpPrev" aria-label="Anterior"><span data-icon="prev"></span></button>
+      <button class="icon-btn filled sm" id="mpPlay" aria-label="Reproducir o pausar"><span data-icon="play"></span></button>
+      <button class="icon-btn sm" id="mpNext" aria-label="Siguiente"><span data-icon="next"></span></button>
+      <button class="icon-btn sm" id="mpRepeat" aria-label="Repetir"><span data-icon="repeat"></span></button>
+    </div>
+    <div class="mp-progress">
+      <span id="mpTime">0:00</span>
+      <input type="range" id="mpSeek" min="0" max="100" value="0" aria-label="Posicion de reproduccion" />
+      <span id="mpDur">0:00</span>
+    </div>
+  </div>
+  <div class="mp-right">
+    <button class="icon-btn sm" id="mpQueueBtn" aria-label="Cola de reproduccion"><span data-icon="queue"></span></button>
+    <button class="icon-btn sm" id="mpEqBtn" aria-label="Ecualizador"><span data-icon="eq"></span></button>
+    <div class="mp-vol">
+      <span data-icon="volume"></span>
+      <input type="range" id="mpVol" min="0" max="100" value="70" aria-label="Volumen" />
+    </div>
+  </div>
+</div>
+
+<!-- ============ VIDEO PLAYER OVERLAY ============ -->
+<div class="player-overlay" id="playerOverlay" hidden aria-modal="true" role="dialog" aria-label="Reproductor de video">
+  <div class="player-stage" id="playerStage">
+    <video id="videoEl" playsinline preload="metadata" crossorigin="anonymous"></video>
+
+    <!-- hover preview -->
+    <div class="scrub-preview" id="scrubPreview" hidden>
+      <div class="sp-thumb" id="spThumb"></div>
+      <div class="sp-time" id="spTime">00:00</div>
+    </div>
+
+    <!-- center feedback -->
+    <div class="player-feedback" id="playerFeedback" hidden><span data-icon="play"></span></div>
+
+    <!-- skip intro / credits -->
+    <button class="skip-btn" id="skipIntroBtn" hidden>Saltar intro <span class="kbd">Intro</span></button>
+    <button class="skip-btn alt" id="skipCreditsBtn" hidden>Saltar creditos <span class="kbd">Creditos</span></button>
+
+    <!-- next episode countdown -->
+    <div class="next-ep" id="nextEpPanel" hidden>
+      <div class="ne-info">
+        <span class="ne-label">Siguiente episodio en</span>
+        <span class="ne-count" id="neCount">5</span>
+        <span class="ne-title" id="neTitle"></span>
+      </div>
+      <div class="ne-actions">
+        <button class="btn btn-text" id="neCancel">Cancelar</button>
+        <button class="btn btn-filled" id="nePlay">Reproducir ahora</button>
+      </div>
+    </div>
+
+    <!-- top bar -->
+    <div class="player-top" id="playerTop">
+      <button class="icon-btn" id="closePlayer" aria-label="Cerrar reproductor"><span data-icon="close"></span></button>
+      <div class="pt-title">
+        <span class="pt-main" id="playerTitle">—</span>
+        <span class="pt-sub" id="playerSubtitle">—</span>
+      </div>
+      <div class="pt-actions">
+        <button class="icon-btn" id="pCastBtn" aria-label="Emitir a dispositivo de red"><span data-icon="cast"></span></button>
+        <button class="icon-btn" id="pPipBtn" aria-label="Picture in picture"><span data-icon="pip"></span></button>
+        <button class="icon-btn" id="pFsBtn" aria-label="Pantalla completa"><span data-icon="fullscreen"></span></button>
+      </div>
+    </div>
+
+    <!-- controls -->
+    <div class="player-controls" id="playerControls">
+      <div class="pc-progress">
+        <div class="pc-track" id="pcTrack">
+          <div class="pc-buff" id="pcBuff"></div>
+          <div class="pc-ab" id="pcAb" hidden><span class="ab-a">A</span><span class="ab-b">B</span></div>
+          <div class="pc-fill" id="pcFill"></div>
+          <div class="pc-handle" id="pcHandle"></div>
+        </div>
+        <div class="pc-times"><span id="pcCurrent">0:00</span><span id="pcTotal">0:00</span></div>
+      </div>
+
+      <div class="pc-row">
+        <div class="pc-left">
+          <button class="icon-btn" id="pcPlay" aria-label="Reproducir o pausar"><span data-icon="play"></span></button>
+          <button class="icon-btn" id="pcBack" aria-label="Retroceder"><span data-icon="replay10"></span></button>
+          <button class="icon-btn" id="pcFwd" aria-label="Avanzar"><span data-icon="forward10"></span></button>
+          <button class="icon-btn" id="pcRepeat" aria-label="Repetir desde el inicio"><span data-icon="repeat"></span></button>
+          <button class="icon-btn" id="pcAbBtn" aria-label="Repeticion A-B"><span data-icon="ab"></span></button>
+          <div class="pc-vol">
+            <span data-icon="volume"></span>
+            <input type="range" id="pcVolume" min="0" max="100" value="80" aria-label="Volumen" />
+          </div>
+        </div>
+
+        <div class="pc-center">
+          <!-- bidirectional speed control -->
+          <div class="speed-control" title="Velocidad de reproduccion">
+            <span class="sc-label">0.5x</span>
+            <input type="range" id="pcSpeed" min="50" max="300" value="100" step="5" aria-label="Velocidad de reproduccion" />
+            <span class="sc-label">2x</span>
+            <output class="sc-value" id="pcSpeedVal">1x</output>
+          </div>
+        </div>
+
+        <div class="pc-right">
+          <button class="icon-btn" id="pcAudioTrack" aria-label="Pista de audio"><span data-icon="audio"></span></button>
+          <button class="icon-btn" id="pcSubTrack" aria-label="Pista de subtitulos"><span data-icon="captions"></span></button>
+          <button class="icon-btn" id="pcQuality" aria-label="Calidad"><span data-icon="quality"></span></button>
+          <button class="icon-btn" id="pcChapters" aria-label="Capitulos"><span data-icon="chapters"></span></button>
+          <button class="icon-btn" id="pcImage" aria-label="Ajustes de imagen"><span data-icon="image"></span></button>
+          <button class="icon-btn" id="pcSubStyle" aria-label="Ajustes de subtitulos"><span data-icon="style"></span></button>
+          <button class="icon-btn" id="pcSleep" aria-label="Temporizador de suspension"><span data-icon="sleep"></span></button>
+          <button class="icon-btn" id="pcKeys" aria-label="Atajos de teclado"><span data-icon="keyboard"></span></button>
+        </div>
+      </div>
+
+      <div class="pc-note" id="pcNote" hidden></div>
+    </div>
+
+    <!-- settings panels -->
+    <div class="player-panel" id="playerPanel" hidden>
+      <div class="pp-head"><span id="ppTitle">Ajustes</span><button class="icon-btn sm" id="ppClose" aria-label="Cerrar panel"><span data-icon="close"></span></button></div>
+      <div class="pp-body" id="ppBody"></div>
+    </div>
+
+    <div class="sub-overlay" id="subOverlay" hidden></div>
+  </div>
+</div>
+
+<!-- ============ DIALOGS (created dynamically, stacked) ============ -->
+
+<div class="toast-host" id="toastHost" aria-live="polite" aria-atomic="false"></div>
+<div class="hover-preview-video" id="hoverPreview" hidden></div>
+
+<script src="js/icons.js?v=27"></script>
+<script src="js/data.js?v=27"></script>
+<script src="js/store.js?v=27"></script>
+<script src="js/ui.js?v=27"></script>
+<script src="js/views.js?v=27"></script>
+<script src="js/player.js?v=27"></script>
+<script src="js/app.js?v=27"></script>
+</body>
+</html>
