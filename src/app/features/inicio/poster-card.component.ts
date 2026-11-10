@@ -1,17 +1,20 @@
-import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core';
 import { ArtComponent } from '../../shared/art.component';
 import { IconComponent } from '../../shared/icon.component';
 import { LibraryEntry } from '../../core/models';
 import { formatDuration } from '../../core/util/format';
+import { MediaHubStore } from '../../core/store/mediahub.store';
 
 /**
  * Tarjeta de póster de la biblioteca (vídeo suelto o episodio).
  *
- * Muestra el póster generado con `<mh-art>`, la insignia de calidad, el estado
- * "visto", la barra de progreso y las acciones de edición y favorito.
+ * Muestra el póster generado con `<mh-art>`, preview en bucle sin audio al
+ * pasar el ratón (hover preview), insignia de calidad, estado "visto",
+ * barra de progreso, calificación y acciones de edición y favorito.
  */
 @Component({
   selector: 'mh-poster-card',
+  standalone: true,
   imports: [ArtComponent, IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './poster-card.component.html',
@@ -25,10 +28,21 @@ import { formatDuration } from '../../core/util/format';
         margin: 0;
         border-radius: 0;
       }
+      .hpv-video {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        z-index: 2;
+        border-radius: inherit;
+      }
     `,
   ],
 })
 export class PosterCardComponent {
+  private readonly store = inject(MediaHubStore);
+
   readonly entry = input.required<LibraryEntry>();
 
   readonly opened = output<LibraryEntry>();
@@ -36,6 +50,9 @@ export class PosterCardComponent {
   readonly favoriteToggled = output<LibraryEntry>();
   readonly hovered = output<{ entry: LibraryEntry; rect: DOMRect }>();
   readonly unhovered = output<void>();
+
+  readonly showVideoPreview = signal(false);
+  private hoverTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** Semilla del arte: el póster del contenido o, si no hay, su título. */
   readonly seed = computed(() => this.entry().poster || this.entry().title);
@@ -55,8 +72,27 @@ export class PosterCardComponent {
     return parts.join(' · ');
   });
 
+  readonly isHoverPreviewEnabled = computed(() => {
+    const prof = this.store.currentProfile();
+    return prof?.preferences?.hoverPreview !== false;
+  });
+
   onEnter(poster: HTMLElement): void {
     this.hovered.emit({ entry: this.entry(), rect: poster.getBoundingClientRect() });
+    if (this.isHoverPreviewEnabled()) {
+      this.hoverTimer = setTimeout(() => {
+        this.showVideoPreview.set(true);
+      }, 350);
+    }
+  }
+
+  onLeave(): void {
+    if (this.hoverTimer) {
+      clearTimeout(this.hoverTimer);
+      this.hoverTimer = null;
+    }
+    this.showVideoPreview.set(false);
+    this.unhovered.emit();
   }
 
   stop(event: Event): void {

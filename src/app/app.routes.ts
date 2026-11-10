@@ -63,6 +63,12 @@ export const routes: Routes = [
     loadComponent: () => import('./features/biblioteca/biblioteca.component').then((m) => m.BibliotecaComponent),
   },
   {
+    path: 'carga-masiva',
+    title: 'Carga masiva · MediaHub',
+    loadComponent: () =>
+      import('./features/carga-masiva/carga-masiva.component').then((m) => m.CargaMasivaComponent),
+  },
+  {
     path: 'usuarios',
     title: 'Usuarios · MediaHub',
     loadComponent: () => import('./features/usuarios/usuarios.component').then((m) => m.UsuariosComponent),

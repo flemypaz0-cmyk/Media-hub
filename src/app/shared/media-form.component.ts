@@ -193,6 +193,7 @@ export class MediaFormComponent {
         const video: Video = {
           kind: 'video',
           id: 'v' + Date.now(),
+          title,
           synopsis: payload.synopsis,
           categoryId: payload.categoryId,
           genre: payload.genre,
@@ -341,7 +342,11 @@ export class MediaFormComponent {
         lyrics: null,
         replayGain: '0.0 dB',
       };
-      this.store.dispatch({ type: 'AddTrackCommand', payload: track });
+      if (this.isEdit()) {
+        this.store.dispatch({ type: 'UpdateTrackCommand', payload: track });
+      } else {
+        this.store.dispatch({ type: 'AddTrackCommand', payload: track });
+      }
     }
 
     this.store.dispatch({
@@ -364,6 +369,30 @@ export class MediaFormComponent {
     /* se crea la categoría al vuelo (combo con creación) */
     this.store.dispatch({ type: 'CreateCategoryCommand', payload: { name } });
     return this.store.categories().find((c) => c.name === name)?.id ?? null;
+  }
+
+  onCategoryChange(val: string | string[] | null): void {
+    this.category.set(typeof val === 'string' ? val : null);
+  }
+
+  onGenreChange(val: string | string[] | null): void {
+    this.genre.set(typeof val === 'string' ? val : null);
+  }
+
+  onTagsChange(val: string | string[] | null): void {
+    this.tags.set(Array.isArray(val) ? val : []);
+  }
+
+  onCollectionChange(val: string | string[] | null): void {
+    this.collection.set(typeof val === 'string' ? val : null);
+  }
+
+  onQualityChange(val: string | string[] | null): void {
+    this.quality.set(typeof val === 'string' ? val : null);
+  }
+
+  onLanguageChange(val: string | string[] | null): void {
+    this.language.set(typeof val === 'string' ? val : null);
   }
 
   close(): void {

@@ -373,3 +373,34 @@ export interface LibraryEntry extends MediaItem {
   seasonNumber?: number;
   number?: number;
 }
+
+/**
+ * Esquema completo del dataset exportado en JSON / XML.
+ * Desacopla la capa de datos estáticos para facilitar la migración
+ * a bases de datos (PostgreSQL, MySQL, SQLite, MongoDB, Firestore).
+ */
+export interface MediaHubDataset {
+  version: string;
+  description?: string;
+  exportedAt?: string;
+  categories: Category[];
+  tags: string[];
+  languages?: string[];
+  qualities?: string[];
+  sampleMedia?: string[];
+  sampleAudio?: string[];
+  series: Series[];
+  videos: Video[];
+  artists: Artist[];
+  albums: Album[];
+  tracks: Track[];
+  playlists: Playlist[];
+  folders: LibraryFolder[];
+  ignored: IgnoredFile[];
+  duplicates: DuplicateFile[];
+  profiles: Profile[];
+  notifications: AppNotification[];
+  activity: ActivityEntry[];
+  settings: ServerSettings;
+  serverStatus: ServerStatus;
+}

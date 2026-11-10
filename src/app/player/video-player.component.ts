@@ -13,8 +13,9 @@ import { PlayerService } from '../core/services/player.service';
 import { MediaHubStore } from '../core/store/mediahub.store';
 import { ToastService } from '../core/services/toast.service';
 import { IconComponent } from '../shared/icon.component';
+import { ArtComponent } from '../shared/art.component';
 import { formatDuration } from '../core/util/format';
-import { Episode, LibraryEntry } from '../core/models';
+import { Episode, ImageAdjustments, LibraryEntry } from '../core/models';
 
 type PanelKind =
   | 'none'
@@ -43,7 +44,7 @@ interface AbRange {
 @Component({
   selector: 'mh-video-player',
   standalone: true,
-  imports: [IconComponent],
+  imports: [IconComponent, ArtComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './video-player.component.html',
 })
@@ -53,7 +54,7 @@ export class VideoPlayerComponent implements OnDestroy {
   private readonly toast = inject(ToastService);
 
   /** Campos del panel de ajustes de imagen. */
-  readonly adjustmentFields: { key: string; label: string; min: number; max: number }[] = [
+  readonly adjustmentFields: { key: keyof Omit<ImageAdjustments, 'toneMapping'>; label: string; min: number; max: number }[] = [
     { key: 'contrast', label: 'Contraste', min: 50, max: 200 },
     { key: 'brightness', label: 'Brillo', min: 50, max: 200 },
     { key: 'sharpness', label: 'Nitidez', min: 0, max: 200 },
@@ -156,8 +157,8 @@ export class VideoPlayerComponent implements OnDestroy {
       background: st.bg,
       opacity: st.opacity / 100,
       fontFamily: `'${st.font}', sans-serif`,
-      bottom: st.position === 'bottom' ? '118px' : st.position === 'top' ? 'auto' : '50%',
-      top: st.position === 'top' ? '90px' : st.position === 'middle' ? '50%' : 'auto',
+      bottom: st.position === 'bottom' ? '118px' : 'auto',
+      top: st.position === 'top' ? '90px' : 'auto',
     };
   });
 
@@ -166,17 +167,22 @@ export class VideoPlayerComponent implements OnDestroy {
       const item = this.player.current();
       const el = this.videoRef()?.nativeElement;
       if (!item || !el) return;
+
+      this.cancelNext();
       el.src = item.source || '/assets/media/clip-01.mp4';
       el.volume = this.player.volume() / 100;
       el.muted = this.player.muted();
       el.playbackRate = this.player.rate();
-      el.currentTime = item.progress && item.progress < item.duration - 20 ? item.progress : 0;
+      this.ab.set({ a: null, b: null });
+      this.lastSave = 0;
+
+      const nominalDuration = item.duration || 0;
+      this.player.setDuration(nominalDuration);
+      this.player.setPosition(item.progress || 0);
+
       el.play().catch(() => {
         /* el navegador puede bloquear el autoplay: el usuario pulsa reproducir */
       });
-      this.ab.set({ a: null, b: null });
-      this.setupNextEpisode(item);
-      this.player.setPosition(el.currentTime);
     });
 
     effect(() => {
@@ -199,30 +205,75 @@ export class VideoPlayerComponent implements OnDestroy {
 
   onTimeUpdate(): void {
     const el = this.videoRef()?.nativeElement;
-    if (!el) return;
-    this.player.setPosition(el.currentTime);
-    this.player.setDuration(el.duration || 0);
+    const item = this.item();
+    if (!el || !item) return;
+
+    const nominalDuration = item.duration || el.duration || 0;
+    const mediaDuration = el.duration || 0;
+
+    let logicalPos = el.currentTime;
+    if (mediaDuration > 0 && nominalDuration > mediaDuration) {
+      const ratio = el.currentTime / mediaDuration;
+      logicalPos = Math.round(ratio * nominalDuration);
+    }
+
+    this.player.setPosition(logicalPos);
+    this.player.setDuration(nominalDuration);
 
     /* repetir A-B */
     const range = this.ab();
-    if (range.a !== null && range.b !== null && el.currentTime >= range.b) {
-      el.currentTime = range.a;
+    if (range.a !== null && range.b !== null && logicalPos >= range.b) {
+      if (mediaDuration > 0 && nominalDuration > mediaDuration) {
+        el.currentTime = (range.a / nominalDuration) * mediaDuration;
+      } else {
+        el.currentTime = range.a;
+      }
     }
 
     /* guardado periódico del progreso */
-    const item = this.item();
-    if (item && el.duration > 0 && Math.abs(el.currentTime - this.lastSave) > 10) {
-      this.lastSave = el.currentTime;
+    if (nominalDuration > 0 && Math.abs(logicalPos - this.lastSave) > 10) {
+      this.lastSave = logicalPos;
       if (item.kind === 'video') {
-        this.store.dispatch({ type: 'UpdateProgressCommand', payload: { id: item.id, progress: el.currentTime } });
+        this.store.dispatch({ type: 'UpdateProgressCommand', payload: { id: item.id, progress: logicalPos } });
       }
+    }
+
+    /* cuenta atrás del siguiente episodio si llegamos a los créditos finales */
+    if (
+      item.kind === 'episode' &&
+      this.store.state().autoplayNext &&
+      item.creditsStart > 0 &&
+      item.creditsEnd > item.creditsStart &&
+      logicalPos >= item.creditsStart &&
+      this.nextCount() === null
+    ) {
+      this.setupNextEpisode(item);
     }
   }
 
   onLoadedMetadata(): void {
     const el = this.videoRef()?.nativeElement;
-    if (!el) return;
-    this.player.setDuration(el.duration || 0);
+    const item = this.item();
+    if (!el || !item) return;
+
+    const nominalDuration = item.duration || el.duration || 0;
+    this.player.setDuration(nominalDuration);
+
+    const mediaDuration = el.duration || 0;
+    if (mediaDuration > 0) {
+      if (item.progress && item.progress > 0 && item.progress < nominalDuration - 10) {
+        let targetTime = item.progress;
+        if (nominalDuration > mediaDuration) {
+          const ratio = item.progress / nominalDuration;
+          targetTime = ratio * (mediaDuration - 1.5);
+        }
+        el.currentTime = Math.max(0, Math.min(mediaDuration - 1.5, targetTime));
+        this.player.setPosition(item.progress);
+      } else {
+        el.currentTime = 0;
+        this.player.setPosition(0);
+      }
+    }
   }
 
   onEnded(): void {
@@ -235,6 +286,10 @@ export class VideoPlayerComponent implements OnDestroy {
         type: 'MarkEpisodeWatchedCommand',
         payload: { seriesId: item.seriesId, episodeId: item.id },
       });
+      if (this.store.state().autoplayNext && this.nextCount() === null) {
+        this.setupNextEpisode(item);
+        return;
+      }
     }
     this.toast.success('Reproducción finalizada.');
   }
@@ -254,8 +309,22 @@ export class VideoPlayerComponent implements OnDestroy {
 
   skip(seconds: number): void {
     const el = this.videoRef()?.nativeElement;
-    if (!el) return;
-    el.currentTime = Math.max(0, Math.min(el.duration || 0, el.currentTime + seconds));
+    const item = this.item();
+    if (!el || !item) return;
+
+    const nominalDuration = item.duration || el.duration || 0;
+    const mediaDuration = el.duration || 0;
+
+    const curLogical = this.player.position();
+    const newLogical = Math.max(0, Math.min(nominalDuration, curLogical + seconds));
+
+    if (mediaDuration > 0 && nominalDuration > mediaDuration) {
+      const ratio = newLogical / (nominalDuration || 1);
+      el.currentTime = Math.max(0, Math.min(mediaDuration - 0.5, ratio * mediaDuration));
+    } else {
+      el.currentTime = Math.max(0, Math.min(mediaDuration, el.currentTime + seconds));
+    }
+    this.player.setPosition(newLogical);
     this.feedback(seconds > 0 ? 'forward10' : 'replay10');
   }
 
@@ -263,6 +332,7 @@ export class VideoPlayerComponent implements OnDestroy {
     const el = this.videoRef()?.nativeElement;
     if (!el) return;
     el.currentTime = 0;
+    this.player.setPosition(0);
     el.play().catch(() => undefined);
     this.feedback('repeat');
     this.toast.show('Reproduciendo desde el inicio.', 'info');
@@ -271,11 +341,19 @@ export class VideoPlayerComponent implements OnDestroy {
   seekFromEvent(event: MouseEvent): void {
     const track = (event.currentTarget as HTMLElement) ?? null;
     const el = this.videoRef()?.nativeElement;
-    if (!track || !el) return;
+    const item = this.item();
+    if (!track || !el || !item) return;
     const rect = track.getBoundingClientRect();
     const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
-    el.currentTime = ratio * (el.duration || 0);
-    this.player.setPosition(el.currentTime);
+
+    const nominalDuration = item.duration || el.duration || 0;
+    const mediaDuration = el.duration || 0;
+
+    if (mediaDuration > 0) {
+      el.currentTime = Math.min(ratio * mediaDuration, Math.max(0, mediaDuration - 0.5));
+    }
+    const logicalPos = Math.round(ratio * nominalDuration);
+    this.player.setPosition(logicalPos);
   }
 
   onTrackMove(event: MouseEvent): void {

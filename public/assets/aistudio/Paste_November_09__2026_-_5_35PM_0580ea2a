@@ -1,0 +1,344 @@
+# Prompt definitivo: Aplicación local de hosting y reproducción multimedia (Angular + Backend CQRS)
+
+Este documento consolida en un solo prompt todo lo especificado en las iteraciones previas. Es la versión única y completa a usar para generar el sistema completo de una sola vez.
+
+## Instrucciones para quien implemente este prompt (leer antes de codificar)
+
+- Cada punto de este documento es un requisito obligatorio, no una sugerencia. Ninguna funcionalidad listada puede quedar "para después" o "fuera de alcance de esta primera versión".
+- Si una funcionalidad no está detallada al 100% (ej. no se especifica un campo, un estado o un caso borde), se debe resolver de la forma estándar de la industria para ese tipo de funcionalidad, no omitirla.
+- La lista de mejoras de reproducción, módulos y opciones de configuración es un mínimo obligatorio, no un máximo. Si existe una mejora estándar de un reproductor multimedia moderno (tipo Jellyfin, Plex, Emby, Navidrome) que no esté mencionada explícitamente aquí pero sea coherente con el resto del sistema, debe implementarse también.
+- No preguntar si se debe implementar algo de esta lista: implementar todo. Solo se debe pedir aclaración ante decisiones que no tengan una convención estándar (ej. nombre de una tabla específica).
+- Toda funcionalidad debe quedar expuesta tanto en el backend (Command/Query correspondiente) como en el frontend (pantalla, componente o control de UI correspondiente). Un módulo no está completo si solo existe el backend sin su UI en Angular, o viceversa.
+- Regla estricta sobre archivos: el sistema NUNCA copia ni mueve el archivo de video/audio a una carpeta interna del proyecto al agregarlo. Toda alta de contenido se hace capturando la ruta local o URL donde el archivo ya reside, y el backend trabaja siempre contra esa ruta/URL original (lectura, streaming, extracción de metadatos). Esto aplica a todos los módulos de contenido (series, videos sueltos, música) y a la carga individual y masiva.
+- Campos de tipo categórico/reutilizable (género, etiquetas, categoría, colección, calidad, idioma, artista, álbum) se presentan siempre como combo box (selector desplegable con búsqueda que reutiliza valores existentes y permite crear uno nuevo al vuelo); los campos de texto libre (título, sinopsis, notas) permanecen como texto escrito.
+- Todo el frontend debe construirse siguiendo el diseño de Material Design 3 (M3): componentes, tipografía, espaciado, elevación, iconografía y sistema de color (incluyendo soporte de tema claro/oscuro con los tokens de color dinámico de M3) deben respetar las guías de M3, no un diseño genérico o un M2 heredado.
+- Regla estricta de paridad video suelto / episodio de serie: absolutamente todas las mejoras y opciones descritas en este documento (formulario con explorador de archivos y autocompletado, miniatura horizontal, carátula vertical, categoría, etiquetas, calidad, duración, preview sin audio en listados, preview de línea de tiempo estilo YouTube, todos los controles del reproductor incluyendo velocidad bidireccional, botón de repetir, panel de ajustes de imagen, subtítulos, capítulos, etc.) aplican por igual a un episodio dentro de una serie y a un video suelto. Un episodio es, a todos los efectos de reproducción, metadatos y edición, un video más: no se debe implementar ninguna de estas funciones solo para el módulo de "videos sueltos" y omitirla u olvidarla en el módulo de "series/episodios", ni tratarlas como funciones exclusivas de un tipo de contenido. Donde este documento describa una función "del video" sin aclarar lo contrario, se entiende que aplica también a episodios de series.
+
+## Stack asumido
+
+- Frontend: Angular (última versión estable), TypeScript estricto, NgRx para manejo de estado, Angular Material con el tema de Material Design 3 (M3) habilitado (esquema de color dinámico, tokens de M3, componentes de Angular Material actualizados a M3) para todos los componentes de UI del sistema.
+- Backend: Java con Spring Boot, arquitectura CQRS.
+- Base de datos: motor relacional (ej. PostgreSQL) para el modelo de escritura; el modelo de lectura puede usar las mismas tablas con vistas/proyecciones optimizadas, o un almacén de lectura separado si el módulo lo requiere (ej. índice de búsqueda de texto completo).
+- Streaming de archivos: servido directamente por el backend con soporte de rango de bytes (HTTP Range Requests) para permitir seek y streaming progresivo.
+- Si el stack real difiere de este supuesto (por ejemplo, otro framework backend), toda la lógica y nomenclatura de Commands/Queries de este documento se traslada igual, solo cambia la sintaxis del lenguaje.
+
+## Objetivo
+
+Aplicación local (self-hosted) cuyo propósito principal es ser un repositorio/biblioteca de video y música para explorar y reproducir contenido (series, videos sueltos, música), con la experiencia de navegación y reproducción como eje central de la interfaz — no un panel de administración. Las funciones de agregar/editar contenido (alta individual, carga masiva, edición) son capacidades de gestión disponibles dentro de esa misma biblioteca, accesibles como acciones puntuales (botones "Agregar", "Editar" en el listado/detalle), no una sección administrativa separada ni la pantalla principal de la app. El cliente Angular debe exponer absolutamente todas las funciones descritas y un backend en arquitectura CQRS que respalde cada una de ellas.
+
+---
+
+## Parte 1: Arquitectura backend (CQRS)
+
+### Principios
+
+- Separación estricta entre Commands (escritura) y Queries (lectura). Ningún Command devuelve datos de negocio más allá de una confirmación/ID/estado; ninguna Query modifica estado.
+- Cada módulo de negocio tiene su propio paquete con Commands, Queries, Handlers, DTOs, eventos de dominio y controlador REST.
+- Bus de mediación (Mediator) que enruta cada Command/Query a su Handler correspondiente, desacoplando los controladores de la lógica de aplicación.
+- Los Commands, al completarse, publican Eventos de Dominio. Los Handlers de eventos actualizan proyecciones de lectura y disparan efectos secundarios (notificaciones, recomendaciones, estadísticas).
+- Historial de reproducción y estadísticas de consumo se modelan como flujo de eventos append-only (Event Sourcing parcial), para permitir reconstrucción y auditoría.
+
+### Estructura de paquetes backend
+
+```
+backend/
+  api/
+    controller/<modulo>/          -> Endpoints REST, uno por módulo
+  application/
+    command/<modulo>/             -> Clases *Command + *CommandHandler
+    query/<modulo>/               -> Clases *Query + *QueryHandler
+    event/<modulo>/                -> Clases *Event + *EventHandler (proyecciones)
+    dto/<modulo>/                  -> DTOs de entrada/salida por módulo
+    mediator/                      -> Bus de comandos/consultas/eventos
+  domain/
+    model/<modulo>/                -> Entidades y agregados de dominio
+    repository/<modulo>/           -> Interfaces de repositorio (puerto)
+  infrastructure/
+    persistence/write/<modulo>/    -> Implementación de repositorios de escritura
+    persistence/read/<modulo>/     -> Proyecciones/repositorios de lectura optimizados
+    streaming/                     -> Servicio de streaming con soporte de rango de bytes
+    transcoding/                   -> Servicio de transcodificación bajo demanda
+    thumbnails/                    -> Generación de miniatura horizontal, carátula vertical y set de miniaturas por escena
+    metadata-providers/            -> Integraciones externas de metadatos (opcional/offline-tolerante)
+    filesystem/                    -> Escaneo, watcher y exploración puntual de carpetas (individual y carga masiva)
+    scheduler/                     -> Tareas programadas (escaneo periódico, limpieza de caché)
+```
+
+### Módulos backend y sus Commands/Queries explícitos
+
+Por cada módulo se listan los Commands y Queries mínimos obligatorios. Se deben nombrar exactamente así (o su equivalente literal en el lenguaje de implementación) para evitar ambigüedad:
+
+**Módulo: Biblioteca (library)**
+- Commands: `RegisterLibraryFolderCommand`, `RemoveLibraryFolderCommand`, `ScanLibraryCommand`, `ReconcileLibraryCommand`, `MarkFileAsIgnoredCommand`, `ResolveDuplicateFileCommand`, `DeleteMediaFileCommand` (elimina solo la referencia/registro, nunca el archivo físico salvo que el usuario lo pida explícitamente en una acción aparte).
+- Queries: `GetLibraryFoldersQuery`, `GetScanStatusQuery`, `GetDuplicateFilesQuery`, `GetIgnoredFilesQuery`.
+- Eventos: `LibraryFolderRegisteredEvent`, `MediaFileDiscoveredEvent`, `MediaFileRemovedEvent`, `MediaFileMovedEvent`.
+- Nota: `RegisterLibraryFolderCommand` registra una ruta/carpeta existente para escaneo automático; no copia ningún archivo.
+
+**Módulo: Carga masiva (bulk-import)**
+- Commands: `BulkImportFromFolderCommand` (recibe la ruta de carpeta y la lista de rutas de archivo seleccionadas; dispara `ExtractMetadataFromPathCommand` y la generación de miniatura horizontal/carátula vertical para cada uno, y termina creando los registros correspondientes vía los Commands de alta ya existentes por cada video/episodio/pista).
+- Queries: `GetFolderVideoCandidatesQuery` (explora una carpeta puntual, con opción de incluir/excluir subcarpetas, y lista los archivos de video encontrados antes de confirmar cuáles importar).
+- Nota: la carpeta usada para una carga masiva es una exploración puntual elegida en el momento; no necesita estar registrada como carpeta permanente de biblioteca ni depende del módulo de escaneo automático.
+
+**Módulo: Series**
+- Commands: `CreateSeriesCommand` (permite crear la ficha de la serie sin episodios todavía), `UpdateSeriesCommand`, `AddSeasonCommand`, `AddEpisodeCommand` (recibe la ruta/URL del episodio, no el archivo), `UpdateEpisodeCommand`, `MarkEpisodeWatchedCommand`, `MarkEpisodeUnwatchedCommand`, `MarkSeasonWatchedCommand`, `SetEpisodeOrderCommand`, `SetAutoplayNextEpisodePreferenceCommand`.
+- Queries: `GetSeriesByIdQuery`, `GetAllSeriesQuery`, `GetSeasonsBySeriesQuery`, `GetEpisodesBySeasonQuery`, `GetNextEpisodeToWatchQuery`, `GetContinueWatchingQuery`, `GetAutoplayNextEpisodePreferenceQuery`.
+- Eventos: `SeriesCreatedEvent`, `EpisodeWatchedEvent`, `EpisodeAddedEvent`.
+
+**Módulo: Videos sueltos (standalone-videos)**
+- Commands: `CreateStandaloneVideoCommand` (recibe la ruta/URL del video, no el archivo), `UpdateStandaloneVideoCommand`, `MarkVideoWatchedCommand`, `MarkVideoUnwatchedCommand`, `DeleteStandaloneVideoCommand` (elimina solo el registro).
+- Queries: `GetStandaloneVideoByIdQuery`, `GetAllStandaloneVideosQuery`, `GetRecentlyAddedVideosQuery`.
+- Eventos: `StandaloneVideoCreatedEvent`, `VideoWatchedEvent`.
+
+**Módulo: Música (music)**
+- Commands: `CreateArtistCommand`, `CreateAlbumCommand`, `AddTrackCommand` (recibe la ruta/URL de la pista, no el archivo), `UpdateTrackMetadataCommand`, `CreatePlaylistCommand`, `AddTrackToPlaylistCommand`, `RemoveTrackFromPlaylistCommand`, `ReorderPlaylistCommand`, `MarkTrackPlayedCommand`, `RateTrackCommand`.
+- Queries: `GetArtistByIdQuery`, `GetAlbumByIdQuery`, `GetTracksByAlbumQuery`, `GetAllPlaylistsQuery`, `GetPlaylistByIdQuery`, `GetMostPlayedTracksQuery`, `GetSimilarTracksQuery`.
+- Eventos: `TrackAddedEvent`, `TrackPlayedEvent`, `PlaylistUpdatedEvent`.
+
+**Módulo: Metadatos (metadata)**
+- Commands: `ExtractMetadataFromPathCommand` (lee el archivo en la ruta/URL indicada —tags embebidos, duración, resolución/calidad, códec de video/audio, pistas de audio, subtítulos embebidos, fecha si está en tags— y devuelve un borrador de metadatos para autocompletar el formulario, sin persistir nada aún), `FetchMetadataFromProviderCommand` (complementa lo no extraíble del archivo consultando un proveedor externo, opcional/offline-tolerante), `OverrideMetadataManuallyCommand` (guarda los valores finales del formulario, ya sea autocompletados o corregidos/completados a mano), `GenerateThumbnailCommand` (extrae automáticamente un fotograma horizontal representativo), `GeneratePosterFromThumbnailCommand` (genera la carátula vertical recortando/ajustando el fotograma horizontal si no se provee una imagen vertical propia), `ReplaceThumbnailCommand`, `ReplacePosterCommand` (reemplazo manual de miniatura horizontal o carátula vertical, vía explorador de archivos, cada una de forma independiente), `AttachSubtitleFileCommand` (agrega una pista de subtítulo externa a UN video puntual, no de forma global), `RemoveSubtitleFileCommand`, `SetSubtitleTrackLanguageCommand`, `SetSubtitleTrackDefaultCommand` (marca cuál pista queda seleccionada por defecto para ese video), `SetAudioTrackLanguageCommand`, `SetAudioTrackDefaultCommand`, `GenerateSceneThumbnailsCommand` (set de miniaturas por escena, usado en el preview de la línea de tiempo).
+- Queries: `GetMetadataStatusQuery`, `GetSubtitleTracksForVideoQuery`, `GetAudioTracksForVideoQuery`, `GetSceneThumbnailsQuery`, `GetSceneThumbnailAtTimeQuery` (miniatura correspondiente a un segundo puntual, para el preview de línea de tiempo estilo YouTube).
+- Eventos: `MetadataFetchedEvent`, `MetadataOverriddenEvent`, `ThumbnailsGeneratedEvent`, `PosterGeneratedEvent`, `SubtitleTrackAttachedEvent`, `AudioTrackDetectedEvent`.
+- Nota: `ExtractMetadataFromPathCommand` es el que dispara el autocompletado del formulario de alta de contenido (ver Parte 2, "Formulario de agregar contenido multimedia"), tanto en alta individual como en carga masiva. El registro final en Series/Videos/Música solo se confirma cuando el usuario guarda el formulario, no automáticamente al detectar el archivo.
+
+### Modelo de subtítulos y pistas de audio: por video, dinámico, nunca estático
+
+Esto no es un campo de texto genérico ni una configuración global compartida entre todos los videos: es una colección propia por cada video/episodio, que se detecta y arma de forma independiente para cada archivo.
+
+- Modelo de datos: cada video/episodio tiene una relación uno-a-muchos con dos entidades propias: `SubtitleTrack` (id, videoId, idioma, formato, origen `embedded`/`external`, ruta del archivo externo si aplica, esDefault) y `AudioTrack` (id, videoId, idioma, códec, canales, esDefault). Ningún video comparte estas colecciones con otro; se generan al procesar cada archivo individualmente.
+- Al ejecutar `ExtractMetadataFromPathCommand` sobre un video puntual, el sistema debe detectar TODAS las pistas de audio y subtítulos embebidos que ese archivo específico tenga (pueden ser ninguna, una o varias, y distintas de un video a otro), con su idioma leído del tag embebido cuando exista.
+- Si un video no trae subtítulos embebidos, o el usuario quiere agregar uno adicional, se hace por video individual con `AttachSubtitleFileCommand` usando el explorador de archivos (filtro subtítulo: SRT/ASS/VTT), nunca aplicando un subtítulo o configuración "por defecto" a todos los videos de la biblioteca.
+- El idioma de cada pista (audio o subtítulo) se autocompleta desde el metadato embebido si existe; si no se detecta, queda como combo box editable con el listado de idiomas, sin asumir un idioma por defecto igual para todos los videos.
+- En el formulario de alta/edición de un video, la sección de subtítulos y audio debe mostrarse como una lista dinámica generada a partir de lo detectado en ESE archivo (una fila por pista encontrada), no como un selector fijo de "sí/no tiene subtítulo".
+
+**Módulo: Taxonomía — categorías y etiquetas (taxonomy)**
+- Commands: `CreateCategoryCommand`, `UpdateCategoryCommand`, `DeleteCategoryCommand`, `CreateTagCommand`, `DeleteTagCommand`, `AssignCategoryToVideoCommand`, `AssignTagsToVideoCommand` (relación muchos-a-muchos entre video y etiquetas).
+- Queries: `GetAllCategoriesQuery`, `GetAllTagsQuery`, `SearchVideosByCategoryQuery`, `SearchVideosByTagsQuery` (combinando varias etiquetas, con modo "todas" o "al menos una"), `SearchVideosByQualityQuery`, `SearchVideosByDurationRangeQuery`, `GetRelatedVideosQuery` (videos relacionados por categoría/etiquetas compartidas, usado en la vista de detalle).
+- Nota: la categoría es única por video (agrupación amplia); las etiquetas son libres y múltiples (identificación específica). Ambas se administran desde la biblioteca, no vienen fijas.
+
+**Módulo: Reproducción (playback)**
+- Commands: `StartPlaybackSessionCommand`, `UpdatePlaybackProgressCommand`, `StopPlaybackSessionCommand`, `SetAudioTrackCommand`, `SetSubtitleTrackCommand`, `SetSubtitleOffsetCommand`, `SetPlaybackSpeedCommand` (acepta valores por debajo y por encima de 1x, para el selector bidireccional tipo volumen), `SetPlaybackQualityCommand`, `RequestTranscodeCommand`, `SetSkipIntroMarkersCommand`, `SetChapterMarkersCommand`, `SetVideoImageAdjustmentsCommand` (contraste, brillo, nitidez, saturación, sombras/luces altas, gamma, denoise, tone-mapping; guardable global por usuario y opcionalmente como override por título), `RepeatPlaybackCommand` (reinicia desde el minuto 0 sin confirmación), `SetHoverPreviewPreferenceCommand` (activa/desactiva el preview sin audio al pasar el cursor sobre una miniatura en listados).
+- Queries: `GetPlaybackStateQuery`, `GetResumePositionQuery`, `GetActiveSessionsQuery` (útil para sincronizar entre dispositivos), `GetVideoImageAdjustmentsQuery`, `GetHoverPreviewPreferenceQuery`.
+- Eventos: `PlaybackStartedEvent`, `PlaybackProgressUpdatedEvent`, `PlaybackFinishedEvent`.
+
+**Módulo: Galería y gestión de archivos (gallery)**
+- Commands: `AddFavoriteFolderCommand`, `RemoveFavoriteFolderCommand`, `BatchRenameFilesCommand`, `MoveFilesCommand`, `CopyFilesCommand`, `MoveFilesToTrashCommand`, `DeleteFilesPermanentlyCommand`, `RestoreFileFromTrashCommand`, `CreateFolderCommand`, `DeleteFolderCommand`, `RateVideoCommand`, `SetWriteTagsToFileMetadataPreferenceCommand`, `MarkVideoAsHiddenCommand`, `UnmarkVideoAsHiddenCommand`, `MarkFolderAsHiddenCommand`.
+- Queries: `GetFolderTreeQuery`, `GetVideosInFolderQuery`, `GetFileInfoQuery`, `GetTrashItemsQuery`, `GetLargeFilesQuery` (parámetro de tamaño mínimo configurable), `GetWriteTagsToFileMetadataPreferenceQuery`, `GetHiddenContentQuery` (requiere PIN válido en la sesión para resolverse).
+- Eventos: `FilesMovedEvent` (debe disparar la actualización de la ruta guardada en el registro de biblioteca correspondiente, vía el handler del módulo de Biblioteca, para no romper el enlace entre el registro y el archivo físico).
+- Nota: la reorganización de archivos de este módulo es una acción explícita y directa del usuario sobre archivos que ya están en su disco; es independiente de la regla de "nunca copiar al agregar contenido a la biblioteca", que aplica solo al flujo de alta de contenido. El detector de duplicados de este módulo reutiliza y refuerza `ResolveDuplicateFileCommand` del módulo Biblioteca, comparando siempre por hash/checksum exacto del archivo, nunca por heurística visual. El contenido/carpetas marcados como ocultos reutilizan el mecanismo de PIN ya definido en el módulo de Usuarios (control parental), ampliado aquí a "ocultar y proteger" en vez de solo "restringir por clasificación".
+
+**Módulo: Usuarios y perfiles (users)**
+- Commands: `CreateUserProfileCommand`, `UpdateUserProfileCommand`, `DeleteUserProfileCommand`, `SetParentalControlCommand`, `SetUserPreferencesCommand`, `SetProfilePinCommand`, `ChangeUserRoleCommand`.
+- Queries: `GetUserProfileQuery`, `GetAllProfilesQuery`, `GetUserPreferencesQuery`.
+- Eventos: `UserProfileCreatedEvent`, `ParentalControlChangedEvent`.
+
+**Módulo: Recomendaciones y estadísticas (insights)**
+- Commands: (mayormente derivados de eventos de otros módulos, sin comandos directos de usuario, salvo:) `RecalculateRecommendationsCommand`.
+- Queries: `GetRecommendationsForUserQuery`, `GetContinueConsumingQuery`, `GetRecentlyAddedQuery`, `GetConsumptionStatsQuery`, `GetTopGenresQuery`, `GetTopArtistsQuery`.
+
+**Módulo: Administración del servidor (admin)**
+- Commands: `UpdateServerSettingsCommand`, `TriggerBackupCommand`, `RestoreBackupCommand`, `ClearTranscodeCacheCommand`, `SchedulePeriodicScanCommand`.
+- Queries: `GetServerStatusQuery`, `GetServerSettingsQuery`, `GetActivityLogQuery`, `GetStorageUsageQuery`.
+
+**Módulo: Notificaciones (notifications)**
+- Commands: `MarkNotificationReadCommand`, `DismissNotificationCommand`.
+- Queries: `GetNotificationsForUserQuery`.
+- Eventos: dispara notificación en base a `EpisodeAddedEvent`, `TrackAddedEvent`, `ScanCompletedEvent`, `BackupCompletedEvent`.
+
+---
+
+## Parte 2: Arquitectura frontend (Angular)
+
+### Principios
+
+- Angular con módulos de funcionalidad (feature modules) con lazy loading, uno por módulo de negocio del backend (biblioteca, carga masiva, series, videos, música, reproductor, taxonomía, usuarios, admin, notificaciones).
+- NgRx como manejador de estado global: cada acción de NgRx que modifica datos llama a un endpoint de Command; cada selector que lee datos consume el resultado de un endpoint de Query. Esto refleja la separación CQRS también en el cliente.
+- Patrón de componentes contenedor/presentacional (smart/dumb components): los componentes contenedores se conectan al store (NgRx) y orquestan llamadas; los componentes presentacionales solo reciben `@Input()` y emiten `@Output()`, sin lógica de negocio.
+- Un servicio Angular por módulo backend (ej. `SeriesApiService`, `MusicApiService`, `PlaybackApiService`, `TaxonomyApiService`, `BulkImportApiService`), cada uno mapea 1 a 1 a los endpoints de Commands/Queries del backend correspondiente.
+
+### Estructura de proyecto Angular
+
+```
+frontend/
+  src/app/
+    core/                          -> Servicios singleton, interceptores HTTP, guards de autenticación/perfil
+    shared/                        -> Componentes, pipes y directivas reutilizables (sin lógica de negocio)
+      file-explorer/               -> Componente reutilizable de explorador de archivos (video o imagen, según filtro)
+    state/                         -> Configuración raíz de NgRx (store, effects, meta-reducers)
+    features/
+      library/                     -> Gestión de carpetas, escaneo, duplicados
+      bulk-import/                 -> Exploración de carpeta puntual y alta masiva de videos
+      gallery/                     -> Navegación tipo explorador (árbol + galería), gestión de archivos en lote, papelera, contenido oculto
+      series/                      -> Listado, detalle de serie, temporadas, episodios, edición y creación
+      videos/                      -> Listado y detalle de videos sueltos, edición y creación
+      music/                       -> Artistas, álbumes, pistas, playlists
+      player/                      -> Reproductor de video y de música (componente central reutilizado por series/videos/music)
+      taxonomy/                    -> Administración de categorías y etiquetas, filtros y videos relacionados
+      users/                       -> Perfiles, preferencias, control parental
+      admin/                       -> Configuración del servidor, backups, logs, almacenamiento
+      notifications/               -> Centro de notificaciones
+      search/                      -> Búsqueda global y filtros avanzados
+    app-routing.module.ts          -> Rutas raíz con lazy loading por feature
+  src/assets/                      -> Iconos, temas, i18n
+  src/environments/                -> Configuración por entorno (URL de API local, flags)
+```
+
+### Cada feature module de Angular debe incluir, sin excepción
+
+- Rutas propias con lazy loading (`loadChildren`).
+- Módulo NgRx propio: `actions`, `reducer`, `effects`, `selectors` (uno por feature, registrado en el store raíz vía `StoreModule.forFeature` y `EffectsModule.forFeature`).
+- Servicio de API dedicado que encapsula las llamadas HTTP a los Commands/Queries del backend de ese módulo.
+- Componentes contenedores para cada pantalla principal del módulo y componentes presentacionales para cada pieza reutilizable de UI.
+- Manejo explícito de estados de carga, error y vacío en cada pantalla (loading spinner, mensaje de error con reintento, estado vacío con call-to-action).
+
+### Componente de explorador de archivos (reutilizable)
+
+- Componente único ubicado en `shared/file-explorer/`, usado en todos los puntos donde se necesite seleccionar un archivo del disco local: video a agregar, imagen de miniatura, imagen de carátula vertical, subtítulo externo, carpeta para carga masiva.
+- Nunca sube ni copia el contenido del archivo: solo captura y devuelve la ruta/URL seleccionada. Se implementa vía file picker nativo del sistema (Electron/File System Access API u otro mecanismo equivalente según el entorno de despliegue del cliente Angular).
+- Acepta un parámetro de filtro de tipo de archivo (video, imagen, subtítulo, carpeta) para reutilizar el mismo componente en cada caso.
+
+### Formulario de agregar/editar contenido multimedia (video/episodio)
+
+- Sin campo de "subir archivo": el botón "Explorar" abre el componente de explorador de archivos filtrado a video; el formulario solo guarda la ruta/URL resultante.
+- Al seleccionar la ruta, se dispara automáticamente `ExtractMetadataFromPathCommand`, que autocompleta el formulario con todo lo detectable (título, duración, resolución/calidad, códecs, año). Lo no detectado queda vacío y editable manualmente; nada de lo detectado se vuelve a escribir a mano.
+- Subtítulos y pistas de audio: se muestran como una lista dinámica propia de ese video, generada a partir de lo detectado específicamente en su archivo (ver "Modelo de subtítulos y pistas de audio" en la Parte 1) — nunca como un selector fijo o una configuración compartida entre videos. Cada fila de la lista tiene su idioma (combo box, autocompletado si se detecta desde el tag embebido) y un indicador de cuál es la pista por defecto. Debajo de la lista, un botón "Agregar subtítulo" abre el explorador de archivos (filtro subtítulo) para adjuntar una pista externa a ese video puntual.
+- Miniatura horizontal (thumbnail): se genera automáticamente extrayendo un fotograma representativo (`GenerateThumbnailCommand`). Reemplazo manual disponible con el explorador de archivos filtrado a imagen.
+- Carátula vertical (poster): si no se provee una imagen vertical propia, se genera automáticamente recortando/ajustando (crop centrado, sin deformar) el fotograma horizontal (`GeneratePosterFromThumbnailCommand`). Reemplazo manual independiente de la miniatura horizontal, con el mismo explorador de archivos. Las vistas de listado en tarjeta vertical usan la carátula vertical; el reproductor y los previews horizontales usan la miniatura horizontal.
+- Campos categóricos/reutilizables (categoría, etiquetas, género, colección, calidad, idioma, artista, álbum) como combo box con búsqueda, reutilizando valores existentes o creando uno nuevo al vuelo. Campos de texto libre (título si difiere, sinopsis, notas) como texto normal.
+- Categoría: selección única por video, administrable (crear/editar/eliminar) desde taxonomía. Etiquetas: selección múltiple, relación muchos-a-muchos, administrable igual.
+- El botón de guardar ejecuta `OverrideMetadataManuallyCommand` con el resultado final (autocompletado + corregido/agregado a mano) y confirma el alta (`CreateStandaloneVideoCommand`/`AddEpisodeCommand`) o la edición (`UpdateStandaloneVideoCommand`/`UpdateEpisodeCommand`) asociando siempre la ruta/URL original, nunca una copia del archivo.
+- Este mismo formulario, precargado con los datos existentes, se reutiliza para la pantalla de edición de un video/episodio ya existente, incluyendo la posibilidad de cambiar la ruta/archivo asociado, miniatura, carátula, categoría, etiquetas y el resto de campos. Esta edición se hace desde dentro de la biblioteca (vista de detalle o listado del propio contenido), no desde una sección administrativa separada.
+- Creación de serie: pantalla independiente para crear la ficha de una serie (sin episodios todavía), antes de cargar contenido, además de la posibilidad de editar una serie existente.
+- Agregar/editar contenido son acciones puntuales dentro de la experiencia normal de biblioteca (botón "Agregar" visible en el listado, botón "Editar" visible en el detalle de cada video/serie), no una pantalla ni un modo de uso separado del resto de la app. La pantalla principal y el flujo por defecto del usuario siguen siendo explorar y reproducir contenido, no gestionar altas y ediciones.
+
+### Módulo de carga masiva desde carpeta
+
+- El usuario elige una carpeta con el componente de explorador de archivos (filtro carpeta); el sistema explora esa carpeta (con opción de incluir/excluir subcarpetas, vía `GetFolderVideoCandidatesQuery`) y lista los archivos de video encontrados.
+- Selección múltiple de cuáles videos agregar (no es obligatorio agregar todos los encontrados).
+- Para cada video seleccionado se ejecuta automáticamente la extracción de metadatos, miniatura horizontal y carátula vertical, igual que en el alta individual, sin repetir el proceso manualmente video por video.
+- El usuario puede revisar/corregir en bloque o individualmente antes de confirmar (`BulkImportFromFolderCommand`), pero el flujo por defecto es automático.
+- La carpeta usada en la carga masiva es una exploración puntual: no depende de estar registrada como carpeta permanente de biblioteca ni del escaneo automático periódico.
+
+### Componente Reproductor (Player) — requisitos de UI explícitos
+
+El componente de reproducción de video debe incluir, como controles visibles o accesibles desde un menú de ajustes dentro del propio reproductor:
+
+- Barra de progreso con vista previa de miniatura estilo YouTube: al pasar el cursor sobre cualquier punto de la línea de tiempo (sin clic ni arrastre), se muestra un recuadro flotante con la miniatura correspondiente a ese minuto/segundo exacto (`GetSceneThumbnailAtTimeQuery`) junto con el tiempo (mm:ss), siguiendo la posición horizontal del cursor en tiempo real.
+- Control de play/pausa, adelantar/retroceder (saltos configurables, ej. 10s/30s).
+- Selector de velocidad de reproducción como slider bidireccional centrado en 1x (velocidad normal), con la misma lógica visual que un control de volumen/balance: valores negativos hacia un lado (más lento), positivos hacia el otro (más rápido), mostrando también el valor numérico (ej. "0.75x", "1.5x").
+- Botón de "repetir": reinicia la reproducción desde el minuto 0 de forma inmediata, sin diálogo ni confirmación.
+- Selector de pista de audio y de subtítulos, con opción "ninguno".
+- Panel de ajuste de subtítulos: tamaño, fuente, color, fondo, posición, sincronización (offset en milisegundos).
+- Botón de "saltar intro" y "saltar créditos" cuando existan marcadores, visible solo en el rango correspondiente.
+- Selector de calidad/resolución, con opción automática.
+- Botón de picture-in-picture.
+- Botón de pantalla completa y de casting a dispositivos de red local.
+- Indicador y control de "siguiente episodio" con cuenta regresiva cancelable, más un toggle persistente aparte (visible en contenido de series) para activar/desactivar la reproducción automática del siguiente episodio en general, no solo puntualmente.
+- Menú de capítulos navegable.
+- Control de repetición A-B.
+- Sleep timer configurable desde el propio reproductor.
+- Panel de "Ajustes de imagen" con sliders en tiempo real y persistentes (global por usuario, opcionalmente override por título): contraste, brillo, nitidez, saturación, sombras y luces altas por separado, gamma, reducción de ruido (denoise), tone-mapping para HDR en pantallas SDR, y botón de "restablecer a valores por defecto".
+- Atajos de teclado documentados y configurables desde ajustes de usuario.
+
+El componente de reproducción de música debe incluir:
+
+- Cola de reproducción visible y editable (drag and drop para reordenar).
+- Ecualizador gráfico con presets y modo manual.
+- Control de crossfade y de reproducción gapless (toggle en ajustes).
+- Modo aleatorio inteligente y repetición de pista/álbum/cola.
+- Visualizador de audio opcional (toggle).
+- Letras sincronizadas cuando estén disponibles.
+- Mini-reproductor persistente (barra inferior) que se mantiene al navegar por otras secciones de la app.
+
+### Preview al pasar el cursor sobre una miniatura (listados/grilla)
+
+- En biblioteca, series, videos sueltos y resultados de búsqueda: al posicionar el cursor sobre la miniatura de un video, se reproduce automáticamente en bucle dentro de la propia miniatura, sin audio (muted), con un pequeño retardo (debounce) antes de iniciar para evitar reproducción innecesaria al pasar el cursor de largo.
+- Al quitar el cursor, se detiene y vuelve a mostrarse la imagen estática.
+- Configurable para desactivarse desde preferencias del usuario (`SetHoverPreviewPreferenceCommand`/`GetHoverPreviewPreferenceQuery`).
+
+### Taxonomía: categorías, etiquetas, calidad y duración en la UI
+
+- Categoría y etiquetas administrables desde una pantalla dedicada (crear/editar/eliminar), y seleccionables como combo box desde el formulario de alta/edición de video.
+- Calidad y duración se muestran automáticamente en listado y detalle (ej. etiqueta visual "1080p"/"4K", duración en formato horas:minutos), detectadas por `ExtractMetadataFromPathCommand`, sin pedirle al usuario que las escriba salvo que falle la detección.
+- Filtros de búsqueda combinables por categoría, una o varias etiquetas (modo "todas"/"al menos una"), calidad y rango de duración.
+- Sección de "videos relacionados" en la vista de detalle de un video, basada en coincidencia de categoría/etiquetas con el resto de la biblioteca (`GetRelatedVideosQuery`).
+
+### Pantallas obligatorias adicionales
+
+- Pantalla de configuración del servidor (solo administrador, y separada de la biblioteca de contenido: carpetas de escaneo, transcodificación, backups, límites de ancho de banda — esta sí es la única pantalla propiamente "administrativa" del sistema, distinta de agregar/editar videos).
+- Pantalla de gestión de usuarios/perfiles con control parental y PIN.
+- Centro de notificaciones con marcado de leído/no leído.
+- Buscador global con filtros combinables (tipo de contenido, género, categoría, etiquetas, año, calidad, rango de duración, estado visto/no visto, calificación).
+- Pantalla de estadísticas de consumo por usuario (tiempo visto/escuchado, géneros y artistas más consumidos).
+- Selector de tema (claro/oscuro/automático según sistema) y soporte de internacionalización (i18n) de la interfaz.
+- Vista de accesibilidad: navegación completa por teclado, soporte de lector de pantalla en los controles principales, contraste ajustable en subtítulos.
+
+---
+
+## Parte 3: Lista ampliada de mejoras y opciones adicionales (obligatorias)
+
+Además de todo lo anterior, el sistema debe incluir:
+
+- Soporte de múltiples bibliotecas independientes (ej. "Películas", "Series", "Música personal", "Videos familiares") con permisos de acceso por perfil.
+- Playlists inteligentes (reglas automáticas, ej. "no vistos agregados en los últimos 30 días", "canciones no escuchadas en 6 meses").
+- Búsqueda de subtítulos externos y descarga manual/asistida cuando no exista coincidencia en el archivo.
+- Normalización de volumen tanto para música (ReplayGain) como para video (loudness normalization opcional).
+- Watcher de sistema de archivos en tiempo real (además del escaneo programado) para detectar cambios sin esperar al siguiente escaneo.
+- Panel de actividad/log de comandos ejecutados, con filtro por módulo y por usuario, para auditoría y depuración.
+- Backup y restauración de metadatos/configuración (no del contenido multimedia en sí) desde la pantalla de administración.
+- API abierta documentada (OpenAPI/Swagger) para que cualquier cliente adicional (móvil, TV) pueda integrarse sin tocar el backend.
+- Modo de acceso remoto opcional fuera de la red local, con autenticación reforzada (segundo factor opcional), desactivado por defecto.
+- Exportación de listas (favoritos, historial, playlists) a formatos estándar (CSV/JSON).
+
+---
+
+## Parte 4: Módulo de Galería (navegación, gestión de archivos y privacidad)
+
+Este módulo está basado en ideas de una app de galería de fotos para Android, curadas y adaptadas a esta aplicación (repositorio de video/música local, web). Se excluye explícitamente lo que no aplica a este contexto (ver "Explícitamente fuera de alcance" al final de esta parte).
+
+### Navegación híbrida: árbol de carpetas + galería
+
+- Pantalla de navegación tipo explorador: panel con árbol de las carpetas registradas en la biblioteca (y sus subcarpetas reales en disco); al entrar a una carpeta, vista en cuadrícula con las miniaturas de los videos que contiene, usando siempre la carátula vertical ya definida.
+- Mostrar la ruta completa de la carpeta actual (breadcrumb).
+- Favoritos de carpetas: acceso directo desde el menú principal a las carpetas marcadas como favoritas (`AddFavoriteFolderCommand`/`RemoveFavoriteFolderCommand`).
+- Este es un modo de navegación alternativo al listado/galería temática ya existente (por categoría, serie, etc.), no lo reemplaza.
+
+### Gestión de archivos dentro de una carpeta
+
+Nota: distinto de la regla de "nunca copiar el archivo al agregar contenido a la biblioteca". Esto es un módulo aparte, bajo control explícito y directo del usuario, para reorganizar archivos ya presentes en su disco; el sistema nunca mueve o renombra archivos automáticamente al reproducir o agregar contenido.
+
+- Selección múltiple de videos dentro de una carpeta para: renombrar en masa con plantilla numerada (`BatchRenameFilesCommand`), mover o copiar a otra carpeta local con el explorador de archivos en modo selección de carpeta destino (`MoveFilesCommand`/`CopyFilesCommand`), enviar a papelera local recuperable o eliminar definitivamente, como dos acciones separadas y claramente diferenciadas en la UI (`MoveFilesToTrashCommand`/`DeleteFilesPermanentlyCommand`/`RestoreFileFromTrashCommand`).
+- Crear y eliminar subcarpetas dentro de cualquier ruta explorada (`CreateFolderCommand`/`DeleteFolderCommand`).
+- Panel de información de archivo: tamaño en disco, resolución, duración, fecha de modificación y ruta exacta (`GetFileInfoQuery`).
+- Cuando una operación de archivo afecta a un video ya registrado en la biblioteca, el sistema debe actualizar automáticamente la referencia de ruta guardada para ese registro (evento `FilesMovedEvent`), para no romper el enlace entre el registro y el archivo físico.
+
+### Organización manual complementaria
+
+- Calificación por estrellas (1 a 5) por video, además de categoría/etiquetas ya definidas, visible en listado y detalle, y usable como filtro de búsqueda (`RateVideoCommand`).
+- Preferencia opcional (no forzada) de escribir etiquetas y calificación también en los metadatos embebidos del propio archivo, no solo en base de datos, para que ese dato viaje con el archivo si se mueve o copia fuera del sistema (`SetWriteTagsToFileMetadataPreferenceCommand`/`GetWriteTagsToFileMetadataPreferenceQuery`).
+- Filtros rápidos de acceso directo (chips) en la galería: solo videos, solo música, agregados hoy/esta semana/este mes, por calificación mínima, como atajo visual sobre los filtros avanzados ya existentes, sin duplicar su lógica.
+
+### Privacidad: contenido oculto y protegido
+
+- Marcar videos o carpetas específicas como ocultos/protegidos: no aparecen en navegación ni búsqueda salvo que el usuario ingrese el PIN de su perfil (reutilizando el mecanismo de PIN ya definido en control parental) (`MarkVideoAsHiddenCommand`/`MarkFolderAsHiddenCommand`).
+- El contenido protegido debe cifrarse en reposo como mínimo en miniatura, carátula y metadatos asociados, para que no quede expuesto si se accede directamente a la base de datos sin pasar por el PIN (`GetHiddenContentQuery` requiere PIN válido en sesión).
+
+### Mantenimiento: duplicados y archivos grandes
+
+- Reforzar el detector de duplicados ya existente (`ResolveDuplicateFileCommand`) para comparar siempre por hash/checksum exacto del archivo, nunca por heurística visual.
+- Buscador de archivos grandes: listar videos que superen un tamaño configurable, para decidir si se transcodifican, se mueven a otro disco o se eliminan (`GetLargeFilesQuery`).
+
+### Revisión rápida durante la carga masiva
+
+- Dentro del módulo de carga masiva ya definido, agregar un modo de revisión rápida en pantalla completa: un video candidato a la vez (con su miniatura o preview corto), y el usuario decide con un gesto o atajo de teclado si lo incluye, lo descarta o lo marca como favorito, avanzando automáticamente al siguiente. Complementa, no reemplaza, la selección múltiple en lista ya definida para la carga masiva.
+
+### Explícitamente fuera de alcance (no implementar)
+
+- Edición de imágenes/fotos (recorte, filtros, superposición de texto/dibujos): la aplicación tiene ajustes de imagen en tiempo real durante la reproducción (ya definidos), no un editor de fotos que modifique o genere copias de archivos.
+- Compartir vía el share sheet nativo de Android: esta es una aplicación web, no una app móvil nativa.
+- Sincronización con disco externo por OTG: función específica de hardware móvil Android, no aplica a un servidor local/web.
+- Soporte de archivos RAW de cámara fotográfica: fuera del alcance de un repositorio de video/música.
+- Modo de "contraseña falsa"/bóveda señuelo: complejidad innecesaria para un servidor local autohospedado; la protección por PIN y el contenido oculto ya cubren la necesidad real de privacidad.
+
+## Entregable esperado
+
+Backend Spring Boot en arquitectura CQRS con todos los módulos, Commands, Queries y eventos listados en la Parte 1 completamente implementados, y frontend Angular con todos los feature modules, componentes (incluyendo explorador de archivos, formulario de alta/edición con autocompletado, carga masiva, reproductor con todas sus mejoras y taxonomía) y pantallas listados en la Parte 2, más todas las opciones adicionales de la Parte 3 y el módulo de galería de la Parte 4 (excluyendo explícitamente lo listado como fuera de alcance en esa parte). Ningún punto de este documento debe quedar sin implementar en la primera entrega.

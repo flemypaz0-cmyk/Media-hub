@@ -13,6 +13,7 @@ import { MusicService } from '../core/services/music.service';
 import { MediaHubStore } from '../core/store/mediahub.store';
 import { ToastService } from '../core/services/toast.service';
 import { IconComponent } from '../shared/icon.component';
+import { ArtComponent } from '../shared/art.component';
 import { formatDuration } from '../core/util/format';
 
 /**
@@ -24,7 +25,7 @@ import { formatDuration } from '../core/util/format';
 @Component({
   selector: 'mh-music-player',
   standalone: true,
-  imports: [IconComponent],
+  imports: [IconComponent, ArtComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './music-player.component.html',
 })

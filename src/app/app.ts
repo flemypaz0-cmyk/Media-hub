@@ -207,7 +207,7 @@ export class App {
         title: 'Carga masiva desde carpeta',
         detail: 'Explorar una carpeta e importar varios vídeos',
         icon: 'server',
-        route: '/biblioteca',
+        route: '/carga-masiva',
       },
     ];
 
@@ -238,7 +238,7 @@ export class App {
         </div>
         <div class="dlg-body">
           <div class="pp-list">
-            @for (opt of data.options; track opt.id) {
+            @for (opt of data().options; track opt.id) {
               <button class="pp-opt" type="button" (click)="pick(opt.route)">
                 <mh-icon [name]="opt.icon" [size]="20" />
                 <span class="pp-opt-tx">
@@ -285,8 +285,8 @@ export class AddContentDialogComponent {
         </div>
         <div class="dlg-body">
           <div class="pp-list">
-            @for (p of data.profiles; track p.id) {
-              <button class="pp-opt" [class.sel]="p.id === data.currentId" type="button" (click)="switchTo(p.id)">
+            @for (p of data().profiles; track p.id) {
+              <button class="pp-opt" [class.sel]="p.id === data().currentId" type="button" (click)="switchTo(p.id)">
                 <span class="avatar" [style.background]="p.color" style="color: #fff">{{ p.avatar }}</span>
                 <span class="pp-opt-tx">
                   <b>{{ p.name }}</b>

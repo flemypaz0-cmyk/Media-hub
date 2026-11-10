@@ -140,13 +140,13 @@
             label="Categoría"
             [values]="categoryValues()"
             [value]="category()"
-            (valueChange)="category.set($event as string | null)"
+            (valueChange)="onCategoryChange($event)"
           />
           <mh-combo-box
             label="Género"
             [values]="genreValues()"
             [value]="genre()"
-            (valueChange)="genre.set($event as string | null)"
+            (valueChange)="onGenreChange($event)"
           />
         </div>
         <div class="grid-2">
@@ -156,13 +156,13 @@
             [value]="tags()"
             [multiple]="true"
             placeholder="Buscar o crear etiqueta..."
-            (valueChange)="tags.set(($event as string[] | null) ?? [])"
+            (valueChange)="onTagsChange($event)"
           />
           <mh-combo-box
             label="Colección"
             [values]="collectionValues()"
             [value]="collection()"
-            (valueChange)="collection.set($event as string | null)"
+            (valueChange)="onCollectionChange($event)"
           />
         </div>
         <div class="grid-2">
@@ -170,13 +170,13 @@
             label="Calidad"
             [values]="qualityValues()"
             [value]="quality()"
-            (valueChange)="quality.set($event as string | null)"
+            (valueChange)="onQualityChange($event)"
           />
           <mh-combo-box
             label="Idioma"
             [values]="languageValues()"
             [value]="language()"
-            (valueChange)="language.set($event as string | null)"
+            (valueChange)="onLanguageChange($event)"
           />
         </div>
       }

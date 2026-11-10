@@ -76,6 +76,7 @@ export const ICON_PATHS: Record<string, string> = {
   replay10: 'M12 5V1L7 6l5 5V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7Z',
   forward10: 'M12 5V1l5 5-5 5V7a5 5 0 1 0 5 5h2a7 7 0 1 1-7-7Z',
   ab: 'M4 18h3v-6h2v6h3v-9H4v9Zm10 0h3v-6h2v6h3v-9h-8v9Z',
+  sparkles: 'M12 2 9.8 8.8 3 11l6.8 2.2L12 20l2.2-6.8L21 11l-6.8-2.2L12 2Z',
 };
 
 /**

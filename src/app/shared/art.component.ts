@@ -17,7 +17,7 @@ import { ArtKind, artSpec } from '../core/data/art';
       focusable="false"
     >
       <defs>
-        <linearGradient [attr.id]="gradientId()" gradientTransform="rotate({{ spec().angle }} .5 .5)">
+        <linearGradient [attr.id]="gradientId()" [attr.gradientTransform]="'rotate(' + spec().angle + ' .5 .5)'">
           <stop offset="0" [attr.stop-color]="spec().from" />
           <stop offset="1" [attr.stop-color]="spec().to" />
         </linearGradient>

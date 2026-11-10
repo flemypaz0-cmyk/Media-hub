@@ -439,7 +439,7 @@ function buildMusic(): { artists: Artist[]; albums: Album[]; tracks: Track[] } {
           title: tt + (t > 1 ? ' (' + (t + 1) + ')' : ''),
           albumId: album.id,
           albumTitle: albTitle,
-          artistId: artist.id,
+          artistId: 'ar' + (ai + 1),
           artistName: name,
           trackNo: t,
           duration: int(140, 420),

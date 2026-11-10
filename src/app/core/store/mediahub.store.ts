@@ -6,13 +6,14 @@
  * en `localStorage` para que la biblioteca sobreviva a una recarga.
  */
 
-import { Injectable, computed, effect, signal } from '@angular/core';
+import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import {
   Album,
   Artist,
   Category,
   Episode,
   LibraryEntry,
+  MediaHubDataset,
   MediaHubState,
   Profile,
   Series,
@@ -20,6 +21,7 @@ import {
   Video,
 } from '../models';
 import { Command } from './commands';
+import { MediaDataService } from '../services/media-data.service';
 import {
   ACTIVITY_LOG,
   ALBUMS,
@@ -109,6 +111,7 @@ function createInitialState(): MediaHubState {
 
 @Injectable({ providedIn: 'root' })
 export class MediaHubStore {
+  private readonly mediaData = inject(MediaDataService);
   private readonly _state = signal<MediaHubState>(createInitialState());
   private readonly _hiddenUnlocked = signal(false);
   private saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -117,6 +120,8 @@ export class MediaHubStore {
   readonly state = this._state.asReadonly();
   /** Desbloquea el contenido oculto desde el panel de usuarios. */
   readonly hiddenUnlocked = this._hiddenUnlocked.asReadonly();
+  /** Referencia al servicio de datos desacoplado. */
+  readonly dataService = this.mediaData;
 
   /* ------------------------- selectores básicos ------------------------- */
 
@@ -221,6 +226,7 @@ export class MediaHubStore {
 
   constructor() {
     this.load();
+    this.hydrateFromService();
     effect(() => {
       const snapshot = this._state();
       clearTimeout(this.saveTimer);
@@ -245,6 +251,85 @@ export class MediaHubStore {
       /* estado corrupto: se conserva la semilla */
     }
     this._state.update((s) => remapMedia(s));
+  }
+
+  /**
+   * Carga asíncronamente el dataset desacoplado desde /assets/data/mediahub-seed.json.
+   * Si localStorage no tiene datos previos, hidrata la tienda directamente.
+   */
+  private async hydrateFromService(): Promise<void> {
+    try {
+      const dataset = await this.mediaData.loadDataset();
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        this.applyDataset(dataset);
+      }
+    } catch (err) {
+      console.warn('Hidratación desde servicio de datos completada con respaldo.', err);
+    }
+  }
+
+  /**
+   * Aplica un dataset completo importado (JSON o base de datos).
+   */
+  applyDataset(d: MediaHubDataset): void {
+    this._state.update((s) => ({
+      ...s,
+      series: clone(d.series),
+      videos: clone(d.videos),
+      artists: clone(d.artists),
+      albums: clone(d.albums),
+      tracks: clone(d.tracks),
+      playlists: clone(d.playlists),
+      categories: clone(d.categories),
+      tags: clone(d.tags),
+      folders: clone(d.folders),
+      ignored: clone(d.ignored),
+      duplicates: clone(d.duplicates),
+      profiles: clone(d.profiles),
+      notifications: clone(d.notifications),
+      activity: clone(d.activity),
+      settings: clone(d.settings),
+      serverStatus: clone(d.serverStatus),
+    }));
+    this._state.update((s) => remapMedia(s));
+  }
+
+  /**
+   * Restablece la biblioteca al dataset estático JSON original.
+   */
+  async resetToSeedData(): Promise<void> {
+    localStorage.removeItem(STORAGE_KEY);
+    const dataset = await this.mediaData.loadDataset();
+    this.applyDataset(dataset);
+  }
+
+  /**
+   * Exporta todo el contenido actual a un objeto MediaHubDataset para copias de seguridad
+   * o para migrar directamente a una base de datos.
+   */
+  exportDataset(): MediaHubDataset {
+    const s = this._state();
+    return {
+      version: '1.0.0',
+      exportedAt: new Date().toISOString(),
+      categories: clone(s.categories),
+      tags: clone(s.tags),
+      series: clone(s.series),
+      videos: clone(s.videos),
+      artists: clone(s.artists),
+      albums: clone(s.albums),
+      tracks: clone(s.tracks),
+      playlists: clone(s.playlists),
+      folders: clone(s.folders),
+      ignored: clone(s.ignored),
+      duplicates: clone(s.duplicates),
+      profiles: clone(s.profiles),
+      notifications: clone(s.notifications),
+      activity: clone(s.activity),
+      settings: clone(s.settings),
+      serverStatus: clone(s.serverStatus),
+    };
   }
 
   /* -------------------------------- despacho -------------------------------- */
@@ -343,7 +428,7 @@ export class MediaHubStore {
           creditsStart: 0,
           creditsEnd: 0,
           sceneThumbs: [],
-        });
+        } as unknown as LibraryEntry);
       }
     });
     s.artists.forEach((a) => {
@@ -420,6 +505,40 @@ function applyCommand(s: MediaHubState, command: Command): MediaHubState {
         ...s,
         series: s.series.map((x) => (x.id === command.payload.id ? { ...x, ...command.payload } : x)),
       };
+    case 'DeleteSeriesCommand':
+      return {
+        ...s,
+        series: s.series.filter((ser) => ser.id !== command.payload),
+      };
+    case 'AddSeasonCommand':
+      return {
+        ...s,
+        series: s.series.map((ser) => {
+          if (ser.id !== command.payload.seriesId) return ser;
+          const nextNum = ser.seasons.length + 1;
+          const newSn = {
+            id: 'sn' + Date.now(),
+            number: nextNum,
+            title: command.payload.title || `Temporada ${nextNum}`,
+            episodes: [],
+          };
+          return { ...ser, seasons: [...ser.seasons, newSn] };
+        }),
+      };
+    case 'DeleteEpisodeCommand':
+      return {
+        ...s,
+        series: s.series.map((ser) => {
+          if (ser.id !== command.payload.seriesId) return ser;
+          return {
+            ...ser,
+            seasons: ser.seasons.map((sn) => ({
+              ...sn,
+              episodes: sn.episodes.filter((e) => e.id !== command.payload.episodeId),
+            })),
+          };
+        }),
+      };
     case 'AddEpisodeCommand':
       return {
         ...s,
@@ -495,7 +614,10 @@ function applyCommand(s: MediaHubState, command: Command): MediaHubState {
     case 'CreateCategoryCommand':
       return {
         ...s,
-        categories: [...s.categories, { id: 'c' + Date.now(), color: '#4f5bd5', ...command.payload }],
+        categories: [
+          ...s.categories,
+          { id: 'c' + Date.now(), name: command.payload.name, color: command.payload.color ?? '#4f5bd5' },
+        ],
       };
     case 'UpdateCategoryCommand':
       return {
@@ -532,6 +654,20 @@ function applyCommand(s: MediaHubState, command: Command): MediaHubState {
     /* -------------------------------- música -------------------------------- */
     case 'AddTrackCommand':
       return { ...s, tracks: [...s.tracks, command.payload] };
+    case 'UpdateTrackCommand':
+      return {
+        ...s,
+        tracks: s.tracks.map((t) => (t.id === command.payload.id ? { ...t, ...command.payload } : t)),
+      };
+    case 'DeleteTrackCommand':
+      return {
+        ...s,
+        tracks: s.tracks.filter((t) => t.id !== command.payload),
+        playlists: s.playlists.map((pl) => ({
+          ...pl,
+          trackIds: pl.trackIds.filter((tid) => tid !== command.payload),
+        })),
+      };
     case 'PlayTrackCommand':
       return {
         ...s,
@@ -544,8 +680,44 @@ function applyCommand(s: MediaHubState, command: Command): MediaHubState {
         ...s,
         tracks: s.tracks.map((t) => (t.id === command.payload.id ? { ...t, rating: command.payload.rating } : t)),
       };
+    case 'CreateAlbumCommand':
+      return { ...s, albums: [command.payload, ...s.albums] };
+    case 'UpdateAlbumCommand':
+      return {
+        ...s,
+        albums: s.albums.map((a) => (a.id === command.payload.id ? { ...a, ...command.payload } : a)),
+      };
+    case 'DeleteAlbumCommand':
+      return {
+        ...s,
+        albums: s.albums.filter((a) => a.id !== command.payload),
+        tracks: s.tracks.filter((t) => t.albumId !== command.payload),
+      };
+    case 'CreateArtistCommand':
+      return { ...s, artists: [command.payload, ...s.artists] };
+    case 'UpdateArtistCommand':
+      return {
+        ...s,
+        artists: s.artists.map((ar) => (ar.id === command.payload.id ? { ...ar, ...command.payload } : ar)),
+      };
+    case 'DeleteArtistCommand':
+      return {
+        ...s,
+        artists: s.artists.filter((ar) => ar.id !== command.payload),
+        albums: s.albums.filter((al) => al.artistId !== command.payload),
+      };
     case 'CreatePlaylistCommand':
       return { ...s, playlists: [command.payload, ...s.playlists] };
+    case 'UpdatePlaylistCommand':
+      return {
+        ...s,
+        playlists: s.playlists.map((pl) => (pl.id === command.payload.id ? { ...pl, ...command.payload } : pl)),
+      };
+    case 'DeletePlaylistCommand':
+      return {
+        ...s,
+        playlists: s.playlists.filter((pl) => pl.id !== command.payload),
+      };
     case 'AddToPlaylistCommand':
       return {
         ...s,
@@ -571,6 +743,105 @@ function applyCommand(s: MediaHubState, command: Command): MediaHubState {
           pl.id === command.payload.playlistId ? { ...pl, trackIds: [...command.payload.trackIds] } : pl,
         ),
       };
+
+    /* ------------------------------ carga masiva --------------------------- */
+    case 'BulkImportFromFolderCommand': {
+      const now = new Date().toISOString();
+      const newVideos: Video[] = [];
+      const newTracks: Track[] = [];
+
+      command.payload.files.forEach((f, idx) => {
+        if (f.kind === 'track') {
+          newTracks.push({
+            id: 'tr' + Date.now() + '-' + idx,
+            title: f.title,
+            albumId: 'al1-0',
+            albumTitle: 'Colección ' + command.payload.folderPath.split(/[\\/]/).pop(),
+            artistId: 'ar1',
+            artistName: 'Artista varios',
+            trackNo: idx + 1,
+            duration: 210,
+            genre: f.genre || 'Varios',
+            year: 2025,
+            source: '/assets/media/track-01.mp3',
+            cover: f.title,
+            path: f.path,
+            played: 0,
+            plays: 0,
+            rating: 0,
+            addedAt: new Date().toISOString(),
+            lyrics: null,
+            replayGain: '+0.0 dB',
+          });
+        } else {
+          newVideos.push({
+            kind: 'video',
+            id: 'v' + Date.now() + '-' + idx,
+            title: f.title,
+            synopsis: 'Importado de forma masiva desde ' + f.path,
+            categoryId: null,
+            genre: f.genre || 'General',
+            year: 2025,
+            tags: ['importado', command.payload.folderPath.split(/[\\/]/).pop() || 'media'],
+            poster: f.title,
+            thumbnail: f.title,
+            duration: 3600 + idx * 300,
+            resolution: f.quality || '1080p',
+            quality: f.quality || '1080p',
+            videoCodec: 'H.264',
+            audioCodec: 'AAC',
+            sizeBytes: 1073741824 * (1 + (idx % 4)),
+            path: f.path,
+            source: '/assets/media/clip-01.mp4',
+            addedAt: now,
+            watched: false,
+            progress: 0,
+            rating: f.favorite ? 5 : 0,
+            favorite: !!f.favorite,
+            hidden: false,
+            audioTracks: [
+              { id: 'a1', language: 'Español', codec: 'AAC', channels: 2, isDefault: true }
+            ],
+            subtitleTracks: [],
+            chapters: [],
+            introStart: 0,
+            introEnd: 0,
+            creditsStart: 0,
+            creditsEnd: 0,
+            sceneThumbs: [],
+          });
+        }
+      });
+
+      return {
+        ...s,
+        videos: [...s.videos, ...newVideos],
+        tracks: [...s.tracks, ...newTracks],
+        activity: [
+          {
+            id: 'act' + Date.now(),
+            at: now,
+            module: 'Carga Masiva',
+            user: s.profiles.find((p) => p.id === s.currentProfileId)?.name || 'Admin',
+            command: 'BulkImportFromFolderCommand',
+            detail: `${command.payload.files.length} archivos importados desde ${command.payload.folderPath}`,
+          },
+          ...s.activity,
+        ],
+        notifications: [
+          {
+            id: 'notif' + Date.now(),
+            type: 'scan',
+            title: 'Carga masiva completada',
+            body: `Se han añadido ${command.payload.files.length} archivos desde ${command.payload.folderPath}.`,
+            at: now,
+            read: false,
+            icon: 'folder-plus',
+          },
+          ...s.notifications,
+        ],
+      };
+    }
 
     /* ------------------------------ biblioteca ------------------------------ */
     case 'RegisterFolderCommand':

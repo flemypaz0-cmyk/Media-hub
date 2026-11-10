@@ -72,7 +72,7 @@ export interface ExplorerResult {
           </span>
           <button class="btn btn-text" type="button" (click)="close()">Cancelar</button>
           <button class="btn btn-filled" type="button" (click)="confirm()">
-            {{ multiple() ? 'Agregar (' + picked().size + ')' : 'Seleccionar' }}
+            {{ multiple() ? 'Agregar (' + pickedCount() + ')' : 'Seleccionar' }}
           </button>
         </div>
       </div>
@@ -91,6 +91,7 @@ export class FileExplorerDialogComponent {
 
   readonly currentPath = signal(this.explorer.roots[0].path);
   readonly picked = signal<Record<string, ExplorerFile>>({});
+  readonly pickedCount = computed(() => Object.keys(this.picked()).length);
 
   readonly kind = computed<ExplorerKind>(() => this.data().kind ?? 'video');
   readonly multiple = computed(() => !!this.data().multiple);

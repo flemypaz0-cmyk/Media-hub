@@ -7,12 +7,15 @@
  */
 
 import {
+  Album,
+  Artist,
   Category,
   Episode,
   IgnoredFile,
   LibraryFolder,
   Playlist,
   Profile,
+  Season,
   ServerSettings,
   Series,
   Track,
@@ -38,12 +41,15 @@ export type Command =
   /* series */
   | { type: 'CreateSeriesCommand'; payload: Series }
   | { type: 'UpdateSeriesCommand'; payload: Partial<Series> & { id: string } }
+  | { type: 'DeleteSeriesCommand'; payload: string }
+  | { type: 'AddSeasonCommand'; payload: { seriesId: string; title?: string } }
   | { type: 'AddEpisodeCommand'; payload: { seriesId: string; seasonId: string; episode: Episode } }
   | { type: 'UpdateEpisodeCommand'; payload: { seriesId: string; episode: Partial<Episode> & { id: string } } }
+  | { type: 'DeleteEpisodeCommand'; payload: { seriesId: string; episodeId: string } }
   | { type: 'MarkEpisodeWatchedCommand'; payload: { seriesId: string; episodeId: string } }
   | { type: 'SetEpisodeOrderCommand'; payload: { seriesId: string; episodeId: string; number: number } }
   /* taxonomía */
-  | { type: 'CreateCategoryCommand'; payload: Omit<Category, 'id'> }
+  | { type: 'CreateCategoryCommand'; payload: { name: string; color?: string } }
   | { type: 'UpdateCategoryCommand'; payload: Partial<Category> & { id: string } }
   | { type: 'DeleteCategoryCommand'; payload: string }
   | { type: 'CreateTagCommand'; payload: string }
@@ -52,12 +58,38 @@ export type Command =
   | { type: 'AssignTagsCommand'; payload: { id: string; tags: string[] } }
   /* música */
   | { type: 'AddTrackCommand'; payload: Track }
+  | { type: 'UpdateTrackCommand'; payload: Partial<Track> & { id: string } }
+  | { type: 'DeleteTrackCommand'; payload: string }
   | { type: 'PlayTrackCommand'; payload: string }
   | { type: 'RateTrackCommand'; payload: { id: string; rating: number } }
+  | { type: 'CreateAlbumCommand'; payload: Album }
+  | { type: 'UpdateAlbumCommand'; payload: Partial<Album> & { id: string } }
+  | { type: 'DeleteAlbumCommand'; payload: string }
+  | { type: 'CreateArtistCommand'; payload: Artist }
+  | { type: 'UpdateArtistCommand'; payload: Partial<Artist> & { id: string } }
+  | { type: 'DeleteArtistCommand'; payload: string }
   | { type: 'CreatePlaylistCommand'; payload: Playlist }
+  | { type: 'UpdatePlaylistCommand'; payload: Partial<Playlist> & { id: string } }
+  | { type: 'DeletePlaylistCommand'; payload: string }
   | { type: 'AddToPlaylistCommand'; payload: { playlistId: string; trackId: string } }
   | { type: 'RemoveFromPlaylistCommand'; payload: { playlistId: string; trackId: string } }
   | { type: 'ReorderPlaylistCommand'; payload: { playlistId: string; trackIds: string[] } }
+  /* carga masiva */
+  | {
+      type: 'BulkImportFromFolderCommand';
+      payload: {
+        folderPath: string;
+        files: {
+          path: string;
+          title: string;
+          genre?: string;
+          quality?: string;
+          favorite?: boolean;
+          kind: 'video' | 'episode' | 'track';
+          seriesId?: string;
+        }[];
+      };
+    }
   /* biblioteca */
   | { type: 'RegisterFolderCommand'; payload: LibraryFolder }
   | { type: 'RemoveFolderCommand'; payload: string }
